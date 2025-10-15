@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Summarizer & Comparator</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>📝 Text Summarizer & Comparator</h1>
+        <p class="subtitle">Summarize & Compare Multiple Documents</p>
+        
+        <!-- Tab Navigation -->
+        <div class="tab-nav">
+            <button class="tab-btn active" onclick="switchTab('single')">Single Document</button>
+            <button class="tab-btn" onclick="switchTab('compare')">Compare Documents</button>
+        </div>
+        
+        <!-- Single Document Tab -->
+        <div id="singleTab" class="tab-content active">
+            <form id="summarizerForm">
+                <div class="form-group">
+                    <label for="method">Summarization Method:</label>
+                    <select id="method" name="method" required>
+                        <option value="abstractive">Abstractive (AI Generated)</option>
+                        <option value="extractive">Extractive (Key Sentences)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="fileInput">Upload PDF File (Optional):</label>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="fileInput" name="file" accept=".pdf">
+                        <label for="fileInput" class="file-input-label">
+                            📁 Click to upload PDF or drag and drop
+                        </label>
+                    </div>
+                    <div class="file-name" id="fileName"></div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="textInput">Or Enter Text Directly:</label>
+                    <textarea id="textInput" name="text" placeholder="Paste your text here..."></textarea>
+                </div>
+                
+                <button type="submit" id="submitBtn">Generate Summary</button>
+            </form>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Generating summary... This may take a moment.</p>
+            </div>
+            
+            <div class="error" id="error"></div>
+            
+            <div class="result-section" id="resultSection">
+                <div class="result-header">
+                    <h2 class="result-title">Summary Result</h2>
+                    <button class="copy-btn" id="copyBtn">📋 Copy</button>
+                </div>
+                <div class="summary-text" id="summaryText"></div>
+            </div>
+        </div>
+        
+        <!-- Compare Documents Tab -->
+        <div id="compareTab" class="tab-content">
+            <form id="compareForm">
+                <div class="form-group">
+                    <label for="compareMethod">Summarization Method:</label>
+                    <select id="compareMethod" name="method" required>
+                        <option value="abstractive">Abstractive (AI Generated)</option>
+                        <option value="extractive">Extractive (Key Sentences)</option>
+                    </select>
+                </div>
+                
+                <div class="document-inputs" id="documentInputs">
+                    <!-- Document 1 -->
+                    <div class="document-input-group">
+                        <h3>Document 1</h3>
+                        <div class="form-group">
+                            <label>Upload PDF:</label>
+                            <div class="file-input-wrapper">
+                                <input type="file" id="file1" name="files" accept=".pdf" class="compare-file">
+                                <label for="file1" class="file-input-label">📁 Upload PDF</label>
+                            </div>
+                            <div class="file-name" id="fileName1"></div>
+                        </div>
+                        <div class="form-group">
+                            <label>Or Enter Text:</label>
+                            <textarea name="texts" placeholder="Paste text here..." class="compare-text"></textarea>
+                        </div>
+                    </div>
+                    
+                    <!-- Document 2 -->
+                    <div class="document-input-group">
+                        <h3>Document 2</h3>
+                        <div class="form-group">
+                            <label>Upload PDF:</label>
+                            <div class="file-input-wrapper">
+                                <input type="file" id="file2" name="files" accept=".pdf" class="compare-file">
+                                <label for="file2" class="file-input-label">📁 Upload PDF</label>
+                            </div>
+                            <div class="file-name" id="fileName2"></div>
+                        </div>
+                        <div class="form-group">
+                            <label>Or Enter Text:</label>
+                            <textarea name="texts" placeholder="Paste text here..." class="compare-text"></textarea>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="button-group">
+                    <button type="button" id="addDocBtn" class="secondary-btn">+ Add Document (Max 5)</button>
+                    <button type="submit" id="compareBtn">Compare Documents</button>
+                </div>
+            </form>
+            
+            <div class="loading" id="compareLoading">
+                <div class="spinner"></div>
+                <p>Comparing documents... This may take a moment.</p>
+            </div>
+            
+            <div class="error" id="compareError"></div>
+            
+            <div class="comparison-results" id="comparisonResults">
+                <div class="comparison-header">
+                    <h2>📊 Comparison Results</h2>
+                </div>
+                
+                <div class="common-themes-section">
+                    <h3>🔗 Common Themes</h3>
+                    <div id="commonThemes" class="themes-container"></div>
+                </div>
+                
+                <div class="summaries-grid" id="summariesGrid"></div>
+                
+                <div class="unique-points-section">
+                    <h3>✨ Unique Points</h3>
+                    <div id="uniquePoints" class="unique-grid"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let docCount = 2;
+        
+        // Tab Switching
+        function switchTab(tab) {
+            const tabs = document.querySelectorAll('.tab-content');
+            const btns = document.querySelectorAll('.tab-btn');
+            
+            tabs.forEach(t => t.classList.remove('active'));
+            btns.forEach(b => b.classList.remove('active'));
+            
+            if (tab === 'single') {
+                document.getElementById('singleTab').classList.add('active');
+                btns[0].classList.add('active');
+            } else {
+                document.getElementById('compareTab').classList.add('active');
+                btns[1].classList.add('active');
+            }
+        }
+        
+        // Single Document Form
+        const form = document.getElementById('summarizerForm');
+        const fileInput = document.getElementById('fileInput');
+        const fileName = document.getElementById('fileName');
+        const textInput = document.getElementById('textInput');
+        const loading = document.getElementById('loading');
+        const resultSection = document.getElementById('resultSection');
+        const summaryText = document.getElementById('summaryText');
+        const errorDiv = document.getElementById('error');
+        const submitBtn = document.getElementById('submitBtn');
+        const copyBtn = document.getElementById('copyBtn');
+
+        fileInput.addEventListener('change', (e) => {
+            fileName.textContent = e.target.files.length > 0 ? `Selected: ${e.target.files[0].name}` : '';
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            resultSection.classList.remove('show');
+            errorDiv.classList.remove('show');
+            
+            const file = fileInput.files[0];
+            const text = textInput.value.trim();
+            
+            if (!file && !text) {
+                showError('Please provide either a PDF file or text input.');
+                return;
+            }
+            
+            loading.classList.add('show');
+            submitBtn.disabled = true;
+            
+            try {
+                const formData = new FormData(form);
+                
+                const response = await fetch('/summarize', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Summarization failed');
+                }
+                
+                const result = await response.json();
+                
+                summaryText.textContent = result.summary;
+                resultSection.classList.add('show');
+                
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                loading.classList.remove('show');
+                submitBtn.disabled = false;
+            }
+        });
+
+        function showError(message) {
+            errorDiv.textContent = '❌ ' + message;
+            errorDiv.classList.add('show');
+        }
+
+        copyBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(summaryText.textContent).then(() => {
+                const originalText = copyBtn.textContent;
+                copyBtn.textContent = '✓ Copied!';
+                setTimeout(() => {
+                    copyBtn.textContent = originalText;
+                }, 2000);
+            });
+        });
+        
+        // Compare Documents Form
+        const compareForm = document.getElementById('compareForm');
+        const addDocBtn = document.getElementById('addDocBtn');
+        const compareBtn = document.getElementById('compareBtn');
+        const compareLoading = document.getElementById('compareLoading');
+        const compareError = document.getElementById('compareError');
+        const comparisonResults = document.getElementById('comparisonResults');
+        
+        // File name display for compare inputs
+        document.addEventListener('change', (e) => {
+            if (e.target.classList.contains('compare-file')) {
+                const fileId = e.target.id;
+                const num = fileId.replace('file', '');
+                const fileNameDiv = document.getElementById('fileName' + num);
+                if (fileNameDiv) {
+                    fileNameDiv.textContent = e.target.files.length > 0 ? 
+                        `Selected: ${e.target.files[0].name}` : '';
+                }
+            }
+        });
+        
+        addDocBtn.addEventListener('click', () => {
+            if (docCount >= 5) {
+                showCompareError('Maximum 5 documents allowed');
+                return;
+            }
+            
+            docCount++;
+            const container = document.getElementById('documentInputs');
+            const newDoc = document.createElement('div');
+            newDoc.className = 'document-input-group';
+            newDoc.innerHTML = `
+                <h3>Document ${docCount} <button type="button" class="remove-btn" onclick="removeDoc(this)">×</button></h3>
+                <div class="form-group">
+                    <label>Upload PDF:</label>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="file${docCount}" name="files" accept=".pdf" class="compare-file">
+                        <label for="file${docCount}" class="file-input-label">📁 Upload PDF</label>
+                    </div>
+                    <div class="file-name" id="fileName${docCount}"></div>
+                </div>
+                <div class="form-group">
+                    <label>Or Enter Text:</label>
+                    <textarea name="texts" placeholder="Paste text here..." class="compare-text"></textarea>
+                </div>
+            `;
+            container.appendChild(newDoc);
+        });
+        
+        function removeDoc(btn) {
+            btn.closest('.document-input-group').remove();
+            docCount--;
+            // Renumber remaining documents
+            const groups = document.querySelectorAll('.document-input-group');
+            groups.forEach((group, index) => {
+                group.querySelector('h3').childNodes[0].textContent = `Document ${index + 1} `;
+            });
+        }
+        
+        compareForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            comparisonResults.classList.remove('show');
+            compareError.classList.remove('show');
+            
+            compareLoading.classList.add('show');
+            compareBtn.disabled = true;
+            
+            try {
+                const formData = new FormData(compareForm);
+                
+                const response = await fetch('/compare', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Comparison failed');
+                }
+                
+                const result = await response.json();
+                displayComparison(result);
+                
+            } catch (error) {
+                showCompareError(error.message);
+            } finally {
+                compareLoading.classList.remove('show');
+                compareBtn.disabled = false;
+            }
+        });
+        
+        function showCompareError(message) {
+            compareError.textContent = '❌ ' + message;
+            compareError.classList.add('show');
+        }
+        
+        function displayComparison(data) {
+            // Display common themes
+            const themesContainer = document.getElementById('commonThemes');
+            themesContainer.innerHTML = data.common_themes.map(theme => 
+                `<span class="theme-tag">${theme}</span>`
+            ).join('');
+            
+            // Display summaries
+            const summariesGrid = document.getElementById('summariesGrid');
+            summariesGrid.innerHTML = data.summaries.map((doc, index) => `
+                <div class="summary-card">
+                    <div class="summary-card-header">
+                        <h4>${doc.name}</h4>
+                        <span class="doc-length">${doc.length} chars</span>
+                    </div>
+                    <div class="summary-card-body">${doc.summary}</div>
+                </div>
+            `).join('');
+            
+            // Display unique points
+            const uniquePoints = document.getElementById('uniquePoints');
+            uniquePoints.innerHTML = Object.entries(data.unique_points).map(([docName, points]) => `
+                <div class="unique-card">
+                    <h4>${docName}</h4>
+                    <div class="unique-tags">
+                        ${points.map(point => `<span class="unique-tag">${point}</span>`).join('')}
+                    </div>
+                </div>
+            `).join('');
+            
+            comparisonResults.classList.add('show');
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+python-dotenv
+transformers[torch]
+PyPDF2
+langchain
+langchain-community
+nltk
+jinja2
+python-multipart
