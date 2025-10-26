@@ -3,148 +3,274 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Text Summarizer & Comparator</title>
+    <title>Technical Product Summarizer</title>
     <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
 </head>
 <body>
     <div class="container">
-        <h1>📝 Text Summarizer & Comparator</h1>
-        <p class="subtitle">Summarize & Compare Multiple Documents</p>
+        <header class="app-header">
+            <h1>🔧 Technical Product Summarizer</h1>
+            <p class="subtitle">AI-Powered Product Analysis with Structured Output</p>
+        </header>
         
         <!-- Tab Navigation -->
         <div class="tab-nav">
-            <button class="tab-btn active" onclick="switchTab('single')">Single Document</button>
-            <button class="tab-btn" onclick="switchTab('compare')">Compare Documents</button>
+            <button class="tab-btn active" onclick="switchTab('technical')">Technical Summary</button>
+            <button class="tab-btn" onclick="switchTab('compare')">Product Comparison</button>
+            <button class="tab-btn" onclick="switchTab('evaluate')">Evaluation</button>
+            <button class="tab-btn" onclick="switchTab('dataset')">Dataset & Training</button>
         </div>
         
-        <!-- Single Document Tab -->
-        <div id="singleTab" class="tab-content active">
-            <form id="summarizerForm">
+        <!-- Tab 1: Technical Summary -->
+        <div id="technicalTab" class="tab-content active">
+            <div class="info-box">
+                <strong>ℹ️ Technical Summarization:</strong> Extract structured information from product descriptions including specs, pros/cons, and recommendations.
+            </div>
+            
+            <form id="technicalForm">
                 <div class="form-group">
-                    <label for="method">Summarization Method:</label>
-                    <select id="method" name="method" required>
-                        <option value="abstractive">Abstractive (AI Generated)</option>
-                        <option value="extractive">Extractive (Key Sentences)</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label for="fileInput">Upload PDF File (Optional):</label>
+                    <label for="techFileInput">Upload Product Description (PDF):</label>
                     <div class="file-input-wrapper">
-                        <input type="file" id="fileInput" name="file" accept=".pdf">
-                        <label for="fileInput" class="file-input-label">
-                            📁 Click to upload PDF or drag and drop
+                        <input type="file" id="techFileInput" name="file" accept=".pdf">
+                        <label for="techFileInput" class="file-input-label">
+                            📁 Upload PDF
                         </label>
                     </div>
-                    <div class="file-name" id="fileName"></div>
+                    <div class="file-name" id="techFileName"></div>
                 </div>
                 
                 <div class="form-group">
-                    <label for="textInput">Or Enter Text Directly:</label>
-                    <textarea id="textInput" name="text" placeholder="Paste your text here..."></textarea>
+                    <label for="techTextInput">Or Enter Product Description:</label>
+                    <textarea id="techTextInput" name="text" rows="6" placeholder="Paste a detailed product description here (e.g., laptop, smartphone, monitor specifications)..."></textarea>
                 </div>
                 
-                <button type="submit" id="submitBtn">Generate Summary</button>
+                <button type="submit" class="btn-primary">Generate Technical Summary</button>
             </form>
             
-            <div class="loading" id="loading">
+            <div class="loading" id="techLoading">
                 <div class="spinner"></div>
-                <p>Generating summary... This may take a moment.</p>
+                <p>Analyzing product specifications...</p>
             </div>
             
-            <div class="error" id="error"></div>
+            <div class="error" id="techError"></div>
             
-            <div class="result-section" id="resultSection">
-                <div class="result-header">
-                    <h2 class="result-title">Summary Result</h2>
-                    <button class="copy-btn" id="copyBtn">📋 Copy</button>
-                </div>
-                <div class="summary-text" id="summaryText"></div>
-            </div>
-        </div>
-        
-        <!-- Compare Documents Tab -->
-        <div id="compareTab" class="tab-content">
-            <form id="compareForm">
-                <div class="form-group">
-                    <label for="compareMethod">Summarization Method:</label>
-                    <select id="compareMethod" name="method" required>
-                        <option value="abstractive">Abstractive (AI Generated)</option>
-                        <option value="extractive">Extractive (Key Sentences)</option>
-                    </select>
-                </div>
-                
-                <div class="document-inputs" id="documentInputs">
-                    <!-- Document 1 -->
-                    <div class="document-input-group">
-                        <h3>Document 1</h3>
-                        <div class="form-group">
-                            <label>Upload PDF:</label>
-                            <div class="file-input-wrapper">
-                                <input type="file" id="file1" name="files" accept=".pdf" class="compare-file">
-                                <label for="file1" class="file-input-label">📁 Upload PDF</label>
-                            </div>
-                            <div class="file-name" id="fileName1"></div>
+            <div class="result-section" id="techResult">
+                <h2 class="section-title">📋 Technical Summary</h2>
+                <div class="tech-summary-container">
+                    <div class="product-header">
+                        <h3 id="productName"></h3>
+                        <span class="category-badge" id="productCategory"></span>
+                        <span class="price-badge" id="productPrice"></span>
+                    </div>
+                    
+                    <div class="summary-section">
+                        <h4>Summary</h4>
+                        <p id="productSummary" class="summary-text"></p>
+                    </div>
+                    
+                    <div class="specs-section">
+                        <h4>🔧 Key Specifications</h4>
+                        <div id="productSpecs" class="specs-grid"></div>
+                    </div>
+                    
+                    <div class="pros-cons-section">
+                        <div class="pros-box">
+                            <h4>✅ Advantages</h4>
+                            <ul id="productPros"></ul>
                         </div>
-                        <div class="form-group">
-                            <label>Or Enter Text:</label>
-                            <textarea name="texts" placeholder="Paste text here..." class="compare-text"></textarea>
+                        <div class="cons-box">
+                            <h4>⚠️ Disadvantages</h4>
+                            <ul id="productCons"></ul>
                         </div>
                     </div>
                     
-                    <!-- Document 2 -->
-                    <div class="document-input-group">
-                        <h3>Document 2</h3>
-                        <div class="form-group">
-                            <label>Upload PDF:</label>
-                            <div class="file-input-wrapper">
-                                <input type="file" id="file2" name="files" accept=".pdf" class="compare-file">
-                                <label for="file2" class="file-input-label">📁 Upload PDF</label>
-                            </div>
-                            <div class="file-name" id="fileName2"></div>
-                        </div>
-                        <div class="form-group">
-                            <label>Or Enter Text:</label>
-                            <textarea name="texts" placeholder="Paste text here..." class="compare-text"></textarea>
-                        </div>
+                    <div class="recommendation-section">
+                        <h4>💡 Best For</h4>
+                        <p id="productBestFor"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab 2: Product Comparison -->
+        <div id="compareTab" class="tab-content">
+            <div class="info-box">
+                <strong>ℹ️ Product Comparison:</strong> Compare multiple products side-by-side with structured analysis of specs, features, and use cases.
+            </div>
+            
+            <form id="compareForm">
+                <div class="document-inputs" id="compareInputs">
+                    <!-- Product 1 -->
+                    <div class="product-input-group">
+                        <h3>Product 1</h3>
+                        <textarea name="texts" rows="4" placeholder="Enter product description..." class="compare-text"></textarea>
+                    </div>
+                    
+                    <!-- Product 2 -->
+                    <div class="product-input-group">
+                        <h3>Product 2</h3>
+                        <textarea name="texts" rows="4" placeholder="Enter product description..." class="compare-text"></textarea>
                     </div>
                 </div>
                 
                 <div class="button-group">
-                    <button type="button" id="addDocBtn" class="secondary-btn">+ Add Document (Max 5)</button>
-                    <button type="submit" id="compareBtn">Compare Documents</button>
+                    <button type="button" id="addProductBtn" class="btn-secondary">+ Add Product (Max 5)</button>
+                    <button type="submit" class="btn-primary">Compare Products</button>
                 </div>
             </form>
             
             <div class="loading" id="compareLoading">
                 <div class="spinner"></div>
-                <p>Comparing documents... This may take a moment.</p>
+                <p>Analyzing and comparing products...</p>
             </div>
             
             <div class="error" id="compareError"></div>
             
-            <div class="comparison-results" id="comparisonResults">
-                <div class="comparison-header">
-                    <h2>📊 Comparison Results</h2>
+            <div class="result-section" id="compareResult">
+                <h2 class="section-title">📊 Comparison Results</h2>
+                <div class="comparison-summary" id="comparisonSummary"></div>
+                <div class="products-grid" id="productsGrid"></div>
+                <div class="spec-comparison-section">
+                    <h3>Specification Comparison</h3>
+                    <div id="specComparison" class="spec-table"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab 3: Evaluation -->
+        <div id="evaluateTab" class="tab-content">
+            <div class="info-box">
+                <strong>ℹ️ Evaluation:</strong> Measure summary quality using ROUGE and BLEU metrics by comparing generated vs reference summaries.
+            </div>
+            
+            <form id="evaluateForm">
+                <div class="form-group">
+                    <label for="referenceText">Reference Summary:</label>
+                    <textarea id="referenceText" name="reference_text" rows="5" placeholder="Enter the reference (ground truth) summary..." required></textarea>
                 </div>
                 
-                <div class="common-themes-section">
-                    <h3>🔗 Common Themes</h3>
-                    <div id="commonThemes" class="themes-container"></div>
+                <div class="form-group">
+                    <label for="generatedText">Generated Summary:</label>
+                    <textarea id="generatedText" name="generated_text" rows="5" placeholder="Enter the generated summary to evaluate..." required></textarea>
                 </div>
                 
-                <div class="summaries-grid" id="summariesGrid"></div>
+                <button type="submit" class="btn-primary">Evaluate Quality</button>
+            </form>
+            
+            <div class="loading" id="evalLoading">
+                <div class="spinner"></div>
+                <p>Calculating metrics...</p>
+            </div>
+            
+            <div class="error" id="evalError"></div>
+            
+            <div class="result-section" id="evalResult">
+                <h2 class="section-title">📊 Evaluation Metrics</h2>
+                <div class="metrics-container">
+                    <div class="metric-group">
+                        <h3>ROUGE Scores</h3>
+                        <div class="metrics-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">ROUGE-1 F1</span>
+                                <span class="metric-value" id="rouge1"></span>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">ROUGE-2 F1</span>
+                                <span class="metric-value" id="rouge2"></span>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">ROUGE-L F1</span>
+                                <span class="metric-value" id="rougeL"></span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-group">
+                        <h3>BLEU Scores</h3>
+                        <div class="metrics-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">BLEU-1</span>
+                                <span class="metric-value" id="bleu1"></span>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">BLEU-2</span>
+                                <span class="metric-value" id="bleu2"></span>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">BLEU-4</span>
+                                <span class="metric-value" id="bleu4"></span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="overall-score">
+                        <h3>Overall Score</h3>
+                        <div class="score-display" id="overallScore"></div>
+                    </div>
+                </div>
                 
-                <div class="unique-points-section">
-                    <h3>✨ Unique Points</h3>
-                    <div id="uniquePoints" class="unique-grid"></div>
+                <div class="report-section">
+                    <h3>Detailed Report</h3>
+                    <pre id="evalReport"></pre>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab 4: Dataset & Training -->
+        <div id="datasetTab" class="tab-content">
+            <div class="info-box">
+                <strong>ℹ️ Dataset & Training:</strong> View the technical product dataset and initiate model fine-tuning.
+            </div>
+            
+            <div class="dataset-section">
+                <h2 class="section-title">📚 Technical Product Dataset</h2>
+                <button id="loadDatasetBtn" class="btn-secondary">Load Dataset Info</button>
+                
+                <div class="loading" id="datasetLoading">
+                    <div class="spinner"></div>
+                    <p>Loading dataset...</p>
+                </div>
+                
+                <div id="datasetInfo" class="dataset-info"></div>
+            </div>
+            
+            <div class="training-section">
+                <h2 class="section-title">🎓 Model Training</h2>
+                <p>Fine-tune the summarization model on the technical product dataset for specialized output.</p>
+                
+                <form id="trainingForm">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="numEpochs">Number of Epochs:</label>
+                            <input type="number" id="numEpochs" name="num_epochs" value="3" min="1" max="10">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="batchSize">Batch Size:</label>
+                            <input type="number" id="batchSize" name="batch_size" value="2" min="1" max="8">
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn-primary">Initiate Training</button>
+                </form>
+                
+                <div class="loading" id="trainingLoading">
+                    <div class="spinner"></div>
+                    <p>Training in progress...</p>
+                </div>
+                
+                <div class="error" id="trainingError"></div>
+                
+                <div class="result-section" id="trainingResult">
+                    <h3>Training Status</h3>
+                    <div id="trainingStatus" class="status-box"></div>
                 </div>
             </div>
         </div>
     </div>
     
     <script>
-        let docCount = 2;
+        let productCount = 2;
         
         // Tab Switching
         function switchTab(tab) {
@@ -154,161 +280,157 @@
             tabs.forEach(t => t.classList.remove('active'));
             btns.forEach(b => b.classList.remove('active'));
             
-            if (tab === 'single') {
-                document.getElementById('singleTab').classList.add('active');
-                btns[0].classList.add('active');
-            } else {
-                document.getElementById('compareTab').classList.add('active');
-                btns[1].classList.add('active');
-            }
+            const tabMap = {
+                'technical': 'technicalTab',
+                'compare': 'compareTab',
+                'evaluate': 'evaluateTab',
+                'dataset': 'datasetTab'
+            };
+            
+            document.getElementById(tabMap[tab]).classList.add('active');
+            event.target.classList.add('active');
         }
         
-        // Single Document Form
-        const form = document.getElementById('summarizerForm');
-        const fileInput = document.getElementById('fileInput');
-        const fileName = document.getElementById('fileName');
-        const textInput = document.getElementById('textInput');
-        const loading = document.getElementById('loading');
-        const resultSection = document.getElementById('resultSection');
-        const summaryText = document.getElementById('summaryText');
-        const errorDiv = document.getElementById('error');
-        const submitBtn = document.getElementById('submitBtn');
-        const copyBtn = document.getElementById('copyBtn');
-
-        fileInput.addEventListener('change', (e) => {
-            fileName.textContent = e.target.files.length > 0 ? `Selected: ${e.target.files[0].name}` : '';
+        // Helper function to show errors
+        function showError(errorDiv, message) {
+            errorDiv.textContent = '❌ ' + message;
+            errorDiv.classList.add('show');
+        }
+        
+        // Helper function to hide error
+        function hideError(errorDiv) {
+            errorDiv.classList.remove('show');
+        }
+        
+        // Tab 1: Technical Summary
+        const techForm = document.getElementById('technicalForm');
+        const techFileInput = document.getElementById('techFileInput');
+        const techFileName = document.getElementById('techFileName');
+        const techTextInput = document.getElementById('techTextInput');
+        const techLoading = document.getElementById('techLoading');
+        const techResult = document.getElementById('techResult');
+        const techError = document.getElementById('techError');
+        
+        techFileInput.addEventListener('change', (e) => {
+            techFileName.textContent = e.target.files.length > 0 ? `Selected: ${e.target.files[0].name}` : '';
         });
-
-        form.addEventListener('submit', async (e) => {
+        
+        techForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            resultSection.classList.remove('show');
-            errorDiv.classList.remove('show');
+            techResult.classList.remove('show');
+            hideError(techError);
             
-            const file = fileInput.files[0];
-            const text = textInput.value.trim();
+            const file = techFileInput.files[0];
+            const text = techTextInput.value.trim();
             
             if (!file && !text) {
-                showError('Please provide either a PDF file or text input.');
+                showError(techError, 'Please provide either a PDF file or text input.');
                 return;
             }
             
-            loading.classList.add('show');
-            submitBtn.disabled = true;
+            techLoading.classList.add('show');
             
             try {
-                const formData = new FormData(form);
+                const formData = new FormData(techForm);
                 
-                const response = await fetch('/summarize', {
+                const response = await fetch('/technical-summarize', {
                     method: 'POST',
                     body: formData
                 });
                 
                 if (!response.ok) {
                     const error = await response.json();
-                    throw new Error(error.detail || 'Summarization failed');
+                    throw new Error(error.detail || 'Technical summarization failed');
                 }
                 
                 const result = await response.json();
-                
-                summaryText.textContent = result.summary;
-                resultSection.classList.add('show');
+                displayTechnicalSummary(result);
                 
             } catch (error) {
-                showError(error.message);
+                showError(techError, error.message);
             } finally {
-                loading.classList.remove('show');
-                submitBtn.disabled = false;
+                techLoading.classList.remove('show');
             }
         });
-
-        function showError(message) {
-            errorDiv.textContent = '❌ ' + message;
-            errorDiv.classList.add('show');
+        
+        function displayTechnicalSummary(data) {
+            document.getElementById('productName').textContent = data.product_name;
+            document.getElementById('productCategory').textContent = data.category;
+            document.getElementById('productPrice').textContent = data.price_range;
+            document.getElementById('productSummary').textContent = data.summary;
+            document.getElementById('productBestFor').textContent = data.best_for;
+            
+            // Specs
+            const specsGrid = document.getElementById('productSpecs');
+            specsGrid.innerHTML = Object.entries(data.key_specs).map(([key, value]) => `
+                <div class="spec-item">
+                    <strong>${key.replace(/_/g, ' ').toUpperCase()}:</strong>
+                    <span>${value}</span>
+                </div>
+            `).join('');
+            
+            // Pros
+            const prosList = document.getElementById('productPros');
+            prosList.innerHTML = data.pros.map(pro => `<li>${pro}</li>`).join('');
+            
+            // Cons
+            const consList = document.getElementById('productCons');
+            consList.innerHTML = data.cons.map(con => `<li>${con}</li>`).join('');
+            
+            techResult.classList.add('show');
         }
-
-        copyBtn.addEventListener('click', () => {
-            navigator.clipboard.writeText(summaryText.textContent).then(() => {
-                const originalText = copyBtn.textContent;
-                copyBtn.textContent = '✓ Copied!';
-                setTimeout(() => {
-                    copyBtn.textContent = originalText;
-                }, 2000);
-            });
-        });
         
-        // Compare Documents Form
+        // Tab 2: Product Comparison
         const compareForm = document.getElementById('compareForm');
-        const addDocBtn = document.getElementById('addDocBtn');
-        const compareBtn = document.getElementById('compareBtn');
+        const addProductBtn = document.getElementById('addProductBtn');
         const compareLoading = document.getElementById('compareLoading');
+        const compareResult = document.getElementById('compareResult');
         const compareError = document.getElementById('compareError');
-        const comparisonResults = document.getElementById('comparisonResults');
         
-        // File name display for compare inputs
-        document.addEventListener('change', (e) => {
-            if (e.target.classList.contains('compare-file')) {
-                const fileId = e.target.id;
-                const num = fileId.replace('file', '');
-                const fileNameDiv = document.getElementById('fileName' + num);
-                if (fileNameDiv) {
-                    fileNameDiv.textContent = e.target.files.length > 0 ? 
-                        `Selected: ${e.target.files[0].name}` : '';
-                }
-            }
-        });
-        
-        addDocBtn.addEventListener('click', () => {
-            if (docCount >= 5) {
-                showCompareError('Maximum 5 documents allowed');
+        addProductBtn.addEventListener('click', () => {
+            if (productCount >= 5) {
+                showError(compareError, 'Maximum 5 products allowed');
                 return;
             }
             
-            docCount++;
-            const container = document.getElementById('documentInputs');
-            const newDoc = document.createElement('div');
-            newDoc.className = 'document-input-group';
-            newDoc.innerHTML = `
-                <h3>Document ${docCount} <button type="button" class="remove-btn" onclick="removeDoc(this)">×</button></h3>
-                <div class="form-group">
-                    <label>Upload PDF:</label>
-                    <div class="file-input-wrapper">
-                        <input type="file" id="file${docCount}" name="files" accept=".pdf" class="compare-file">
-                        <label for="file${docCount}" class="file-input-label">📁 Upload PDF</label>
-                    </div>
-                    <div class="file-name" id="fileName${docCount}"></div>
-                </div>
-                <div class="form-group">
-                    <label>Or Enter Text:</label>
-                    <textarea name="texts" placeholder="Paste text here..." class="compare-text"></textarea>
-                </div>
+            productCount++;
+            const container = document.getElementById('compareInputs');
+            const newProduct = document.createElement('div');
+            newProduct.className = 'product-input-group';
+            newProduct.innerHTML = `
+                <h3>Product ${productCount} <button type="button" class="remove-btn" onclick="removeProduct(this)">×</button></h3>
+                <textarea name="texts" rows="4" placeholder="Enter product description..." class="compare-text"></textarea>
             `;
-            container.appendChild(newDoc);
+            container.appendChild(newProduct);
         });
         
-        function removeDoc(btn) {
-            btn.closest('.document-input-group').remove();
-            docCount--;
-            // Renumber remaining documents
-            const groups = document.querySelectorAll('.document-input-group');
+        function removeProduct(btn) {
+            btn.closest('.product-input-group').remove();
+            productCount--;
+            // Renumber remaining products
+            const groups = document.querySelectorAll('.product-input-group');
             groups.forEach((group, index) => {
-                group.querySelector('h3').childNodes[0].textContent = `Document ${index + 1} `;
+                const h3 = group.querySelector('h3');
+                const textNodes = Array.from(h3.childNodes).filter(node => node.nodeType === 3);
+                if (textNodes.length > 0) {
+                    textNodes[0].textContent = `Product ${index + 1} `;
+                }
             });
         }
         
         compareForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            comparisonResults.classList.remove('show');
-            compareError.classList.remove('show');
+            compareResult.classList.remove('show');
+            hideError(compareError);
             
             compareLoading.classList.add('show');
-            compareBtn.disabled = true;
             
             try {
                 const formData = new FormData(compareForm);
                 
-                const response = await fetch('/compare', {
+                const response = await fetch('/compare-products', {
                     method: 'POST',
                     body: formData
                 });
@@ -322,49 +444,237 @@
                 displayComparison(result);
                 
             } catch (error) {
-                showCompareError(error.message);
+                showError(compareError, error.message);
             } finally {
                 compareLoading.classList.remove('show');
-                compareBtn.disabled = false;
             }
         });
         
-        function showCompareError(message) {
-            compareError.textContent = '❌ ' + message;
-            compareError.classList.add('show');
+        function displayComparison(data) {
+            // Summary
+            document.getElementById('comparisonSummary').innerHTML = `
+                <p><strong>${data.product_count} products</strong> compared in <strong>${data.category}</strong> category.</p>
+                <p>${data.summary}</p>
+            `;
+            
+            // Products grid
+            const productsGrid = document.getElementById('productsGrid');
+            productsGrid.innerHTML = data.products.map(product => `
+                <div class="product-card">
+                    <h4>${product.name}</h4>
+                    <div class="product-meta">
+                        <span class="category-badge">${product.category}</span>
+                        <span class="price-badge">${product.price_range}</span>
+                    </div>
+                    <p class="best-for"><strong>Best for:</strong> ${product.best_for}</p>
+                </div>
+            `).join('');
+            
+            // Spec comparison table
+            const specComparison = document.getElementById('specComparison');
+            if (Object.keys(data.spec_comparison).length > 0) {
+                specComparison.innerHTML = Object.entries(data.spec_comparison).map(([specName, values]) => `
+                    <div class="spec-row">
+                        <div class="spec-name">${specName.replace(/_/g, ' ').toUpperCase()}</div>
+                        <div class="spec-values">
+                            ${values.map(v => `
+                                <div class="spec-value-item">
+                                    <strong>${v.product}:</strong> ${v.value}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                specComparison.innerHTML = '<p>No common specifications found.</p>';
+            }
+            
+            compareResult.classList.add('show');
         }
         
-        function displayComparison(data) {
-            // Display common themes
-            const themesContainer = document.getElementById('commonThemes');
-            themesContainer.innerHTML = data.common_themes.map(theme => 
-                `<span class="theme-tag">${theme}</span>`
-            ).join('');
+        // Tab 3: Evaluation
+        const evaluateForm = document.getElementById('evaluateForm');
+        const evalLoading = document.getElementById('evalLoading');
+        const evalResult = document.getElementById('evalResult');
+        const evalError = document.getElementById('evalError');
+        
+        evaluateForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
             
-            // Display summaries
-            const summariesGrid = document.getElementById('summariesGrid');
-            summariesGrid.innerHTML = data.summaries.map((doc, index) => `
-                <div class="summary-card">
-                    <div class="summary-card-header">
-                        <h4>${doc.name}</h4>
-                        <span class="doc-length">${doc.length} chars</span>
-                    </div>
-                    <div class="summary-card-body">${doc.summary}</div>
+            evalResult.classList.remove('show');
+            hideError(evalError);
+            
+            evalLoading.classList.add('show');
+            
+            try {
+                const formData = new FormData(evaluateForm);
+                
+                const response = await fetch('/evaluate', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Evaluation failed');
+                }
+                
+                const result = await response.json();
+                displayEvaluation(result);
+                
+            } catch (error) {
+                showError(evalError, error.message);
+            } finally {
+                evalLoading.classList.remove('show');
+            }
+        });
+        
+        function displayEvaluation(data) {
+            const scores = data.scores;
+            
+            // ROUGE scores
+            document.getElementById('rouge1').textContent = scores.rouge1_fmeasure.toFixed(4);
+            document.getElementById('rouge2').textContent = scores.rouge2_fmeasure.toFixed(4);
+            document.getElementById('rougeL').textContent = scores.rougeL_fmeasure.toFixed(4);
+            
+            // BLEU scores
+            document.getElementById('bleu1').textContent = scores.bleu1.toFixed(4);
+            document.getElementById('bleu2').textContent = scores.bleu2.toFixed(4);
+            document.getElementById('bleu4').textContent = scores.bleu4.toFixed(4);
+            
+            // Overall score
+            const overallScore = scores.overall_score;
+            const scorePercent = (overallScore * 100).toFixed(1);
+            document.getElementById('overallScore').innerHTML = `
+                <div class="score-circle">
+                    <span class="score-number">${scorePercent}%</span>
                 </div>
-            `).join('');
+            `;
             
-            // Display unique points
-            const uniquePoints = document.getElementById('uniquePoints');
-            uniquePoints.innerHTML = Object.entries(data.unique_points).map(([docName, points]) => `
-                <div class="unique-card">
-                    <h4>${docName}</h4>
-                    <div class="unique-tags">
-                        ${points.map(point => `<span class="unique-tag">${point}</span>`).join('')}
+            // Report
+            document.getElementById('evalReport').textContent = data.report;
+            
+            evalResult.classList.add('show');
+        }
+        
+        // Tab 4: Dataset & Training
+        const loadDatasetBtn = document.getElementById('loadDatasetBtn');
+        const datasetLoading = document.getElementById('datasetLoading');
+        const datasetInfo = document.getElementById('datasetInfo');
+        
+        loadDatasetBtn.addEventListener('click', async () => {
+            datasetLoading.classList.add('show');
+            datasetInfo.innerHTML = '';
+            
+            try {
+                const response = await fetch('/dataset-info');
+                if (!response.ok) throw new Error('Failed to load dataset');
+                
+                const data = await response.json();
+                displayDatasetInfo(data);
+                
+            } catch (error) {
+                datasetInfo.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+            } finally {
+                datasetLoading.classList.remove('show');
+            }
+        });
+        
+        function displayDatasetInfo(data) {
+            datasetInfo.innerHTML = `
+                <div class="dataset-stats">
+                    <div class="stat-card">
+                        <span class="stat-number">${data.total_products}</span>
+                        <span class="stat-label">Total Products</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-number">${data.categories.length}</span>
+                        <span class="stat-label">Categories</span>
                     </div>
                 </div>
-            `).join('');
+                
+                <div class="categories-list">
+                    <h4>Categories:</h4>
+                    <div class="category-tags">
+                        ${data.categories.map(cat => `<span class="category-tag">${cat}</span>`).join('')}
+                    </div>
+                </div>
+                
+                <div class="products-list">
+                    <h4>Products in Dataset:</h4>
+                    <ul>
+                        ${data.products.map(p => `
+                            <li><strong>${p.name}</strong> (${p.category})</li>
+                        `).join('')}
+                    </ul>
+                </div>
+            `;
+            datasetInfo.classList.add('show');
+        }
+        
+        // Training form
+        const trainingForm = document.getElementById('trainingForm');
+        const trainingLoading = document.getElementById('trainingLoading');
+        const trainingResult = document.getElementById('trainingResult');
+        const trainingError = document.getElementById('trainingError');
+        
+        trainingForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
             
-            comparisonResults.classList.add('show');
+            trainingResult.classList.remove('show');
+            hideError(trainingError);
+            
+            trainingLoading.classList.add('show');
+            
+            try {
+                const numEpochs = parseInt(document.getElementById('numEpochs').value);
+                const batchSize = parseInt(document.getElementById('batchSize').value);
+                
+                const response = await fetch('/train', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        num_epochs: numEpochs,
+                        batch_size: batchSize,
+                        model_name: "facebook/bart-large-cnn"
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Training failed');
+                }
+                
+                const result = await response.json();
+                displayTrainingResult(result);
+                
+            } catch (error) {
+                showError(trainingError, error.message);
+            } finally {
+                trainingLoading.classList.remove('show');
+            }
+        });
+        
+        function displayTrainingResult(data) {
+            document.getElementById('trainingStatus').innerHTML = `
+                <div class="status-${data.status}">
+                    <h4>Status: ${data.status.toUpperCase()}</h4>
+                    <p>${data.message}</p>
+                    ${data.metrics ? `
+                        <div class="training-metrics">
+                            <h5>Training Configuration:</h5>
+                            <ul>
+                                <li>Samples: ${data.metrics.num_samples}</li>
+                                <li>Epochs: ${data.metrics.num_epochs}</li>
+                                <li>Batch Size: ${data.metrics.batch_size}</li>
+                            </ul>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            trainingResult.classList.add('show');
         }
     </script>
 </body>

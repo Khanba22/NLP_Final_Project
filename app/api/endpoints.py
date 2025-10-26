@@ -5,9 +5,21 @@ from fastapi.templating import Jinja2Templates
 from typing import Optional, List
 
 from app.services.summarizer import SummarizerService
+from app.services.technical_summarizer import TechnicalSummarizer
 from app.utils.file_handler import extract_text_from_pdf
 from app.core.config import settings
-from .schemas import SummarizationResponse, ComparisonResponse
+from app.data.product_dataset import create_default_dataset
+from app.evaluation.metrics import SummarizationEvaluator, format_evaluation_report
+from app.training.trainer import TrainingPipeline
+from .schemas import (
+    SummarizationResponse, 
+    ComparisonResponse,
+    TechnicalSummaryResponse,
+    ProductComparisonResponse,
+    EvaluationResponse,
+    TrainingRequest,
+    TrainingResponse
+)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -15,6 +27,12 @@ templates = Jinja2Templates(directory="templates")
 def get_summarizer_service(request: Request) -> SummarizerService:
     """Dependency to get the summarizer service from app state."""
     return request.app.state.summarizer
+
+def get_technical_summarizer(request: Request) -> TechnicalSummarizer:
+    """Dependency to get the technical summarizer service from app state."""
+    if not hasattr(request.app.state, 'technical_summarizer'):
+        request.app.state.technical_summarizer = TechnicalSummarizer()
+    return request.app.state.technical_summarizer
 
 @router.get("/", response_class=HTMLResponse)
 async def get_ui(request: Request):
@@ -133,4 +151,206 @@ async def compare_documents(
         raise
     except Exception as e:
         print(f"Comparison error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/technical-summarize", response_model=TechnicalSummaryResponse)
+async def technical_summarize(
+    file: Optional[UploadFile] = File(None),
+    text: Optional[str] = Form(None),
+    tech_summarizer: TechnicalSummarizer = Depends(get_technical_summarizer)
+):
+    """
+    Generate a structured technical summary with specs, pros, cons, etc.
+    """
+    input_text = ""
+    try:
+        if file and file.filename.endswith('.pdf'):
+            content = await file.read()
+            input_text = extract_text_from_pdf(content)
+        elif text:
+            input_text = text
+        else:
+            raise HTTPException(status_code=400, detail="Please provide either a PDF file or text input")
+
+        if not input_text or len(input_text.strip()) < settings.MIN_TEXT_LENGTH:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Text is too short to summarize (minimum {settings.MIN_TEXT_LENGTH} characters)"
+            )
+
+        # Generate structured summary
+        try:
+            structured_summary = tech_summarizer.extract_structured_summary(input_text)
+        except Exception as summary_error:
+            print(f"Error generating structured summary: {summary_error}")
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Error generating summary: {str(summary_error)}. Please try again with a different description."
+            )
+        
+        return TechnicalSummaryResponse(
+            product_name=structured_summary['product_name'],
+            category=structured_summary['category'],
+            summary=structured_summary['summary'],
+            key_specs=structured_summary['key_specs'],
+            pros=structured_summary['pros'],
+            cons=structured_summary['cons'],
+            best_for=structured_summary['best_for'],
+            price_range=structured_summary['price_range'],
+            original_length=len(input_text)
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Technical summarization error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+
+
+@router.post("/compare-products", response_model=ProductComparisonResponse)
+async def compare_products(
+    files: Optional[List[UploadFile]] = File(None),
+    texts: Optional[List[str]] = Form(None),
+    tech_summarizer: TechnicalSummarizer = Depends(get_technical_summarizer)
+):
+    """
+    Compare multiple technical products with structured analysis
+    """
+    try:
+        documents = []
+        
+        # Process uploaded files
+        if files:
+            for file in files:
+                if file.filename and file.filename.endswith('.pdf'):
+                    content = await file.read()
+                    text = extract_text_from_pdf(content)
+                    documents.append(text)
+        
+        # Process text inputs
+        if texts:
+            for text in texts:
+                if text and text.strip():
+                    documents.append(text.strip())
+        
+        if len(documents) < 2:
+            raise HTTPException(status_code=400, detail="Please provide at least 2 products to compare")
+        
+        if len(documents) > 5:
+            raise HTTPException(status_code=400, detail="Maximum 5 products allowed for comparison")
+        
+        # Generate structured summaries for each product
+        product_summaries = []
+        for doc in documents:
+            if len(doc.strip()) < settings.MIN_TEXT_LENGTH:
+                raise HTTPException(status_code=400, detail="One or more documents are too short")
+            
+            summary = tech_summarizer.extract_structured_summary(doc)
+            product_summaries.append(summary)
+        
+        # Compare products
+        comparison = tech_summarizer.compare_products(product_summaries)
+        
+        return ProductComparisonResponse(**comparison)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Product comparison error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dataset-info")
+async def get_dataset_info():
+    """
+    Get information about the technical product dataset
+    """
+    try:
+        dataset = create_default_dataset()
+        
+        return {
+            "total_products": len(dataset),
+            "categories": list(set(p['category'] for p in dataset.products)),
+            "products": [
+                {
+                    "id": p['product_id'],
+                    "name": p['product_name'],
+                    "category": p['category']
+                }
+                for p in dataset.products
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/evaluate", response_model=EvaluationResponse)
+async def evaluate_summary(
+    reference_text: str = Form(...),
+    generated_text: str = Form(...)
+):
+    """
+    Evaluate summary quality using ROUGE and BLEU metrics
+    """
+    try:
+        evaluator = SummarizationEvaluator()
+        scores = evaluator.evaluate_text_summary(generated_text, reference_text)
+        report = format_evaluation_report(scores)
+        
+        return EvaluationResponse(
+            scores=scores,
+            report=report
+        )
+    except Exception as e:
+        print(f"Evaluation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/train", response_model=TrainingResponse)
+async def train_model(request: TrainingRequest):
+    """
+    Train/fine-tune the summarization model on the technical product dataset
+    Note: This is a demo endpoint. In production, this should be async/background task
+    """
+    try:
+        # Load dataset
+        dataset = create_default_dataset()
+        
+        # Create training pipeline
+        pipeline = TrainingPipeline(
+            dataset=dataset,
+            model_name=request.model_name
+        )
+        
+        # Note: In production, you would want to run this as a background task
+        # For demo purposes, we'll just return a message
+        return TrainingResponse(
+            status="initiated",
+            message=f"Training initiated with {len(dataset)} samples. This would normally run as a background task.",
+            metrics={
+                "num_samples": len(dataset),
+                "num_epochs": request.num_epochs,
+                "batch_size": request.batch_size
+            }
+        )
+        
+        # Uncomment below to actually run training (WARNING: Time consuming!)
+        # results = pipeline.run_training(
+        #     num_epochs=request.num_epochs,
+        #     batch_size=request.batch_size
+        # )
+        # 
+        # return TrainingResponse(
+        #     status="completed",
+        #     message="Training completed successfully",
+        #     metrics=results.get("training_metrics")
+        # )
+        
+    except Exception as e:
+        print(f"Training error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

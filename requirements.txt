@@ -6,6 +6,14 @@ transformers[torch]
 PyPDF2
 langchain
 langchain-community
+langchain-openai
 nltk
 jinja2
 python-multipart
+rouge-score
+evaluate
+datasets
+accelerate
+peft
+scikit-learn
+pandas
