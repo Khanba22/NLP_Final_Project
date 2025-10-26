@@ -65,7 +65,7 @@ Provide a concise, technical summary focusing on specifications and performance 
             template=template
         )
     
-    def _safe_summarize(self, text: str, max_length: int = 200, min_length: int = 50) -> str:
+    def _safe_summarize(self, text: str, max_length: int = 400, min_length: int = 200) -> str:
         """
         Safely summarize text using the model directly
         
@@ -330,6 +330,33 @@ Provide a concise, technical summary focusing on specifications and performance 
             return "Budget ($200-500)"
         else:
             return "Mid-range ($500-1000)"
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     
     def compare_products(self, products: List[Dict[str, Any]]) -> Dict[str, Any]:
         """

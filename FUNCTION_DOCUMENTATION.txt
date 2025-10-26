@@ -1,0 +1,1495 @@
+================================================================================
+          TECHNICAL PRODUCT SUMMARIZER - FUNCTION DOCUMENTATION
+                    Complete Function Reference Guide
+================================================================================
+
+This document provides detailed documentation for every function in the system,
+explaining what it does, how it works, parameters, return values, and examples.
+
+================================================================================
+                    PART 1: API ENDPOINTS (endpoints.py)
+================================================================================
+
+FILE: app/api/endpoints.py
+PURPOSE: Defines all API routes and request handlers
+
+--------------------------------------------------------------------------------
+FUNCTION: get_summarizer_service()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Dependency injection function that provides the SummarizerService instance
+to API endpoints that need it.
+
+SIGNATURE:
+def get_summarizer_service(request: Request) -> SummarizerService
+
+HOW IT WORKS:
+1. Receives the FastAPI Request object
+2. Accesses app.state.summarizer (initialized during startup)
+3. Returns the summarizer instance
+
+PARAMETERS:
+- request: FastAPI Request object containing app state
+
+RETURNS:
+- SummarizerService instance
+
+USAGE:
+This is used as a dependency in endpoint functions:
+@router.post("/endpoint")
+async def endpoint(summarizer: SummarizerService = Depends(get_summarizer_service)):
+    # Use summarizer here
+
+WHY IT EXISTS:
+- Implements dependency injection pattern
+- Ensures single instance of summarizer (singleton)
+- Allows endpoints to access shared resources
+
+--------------------------------------------------------------------------------
+FUNCTION: get_technical_summarizer()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Dependency injection for TechnicalSummarizer service. Creates instance on
+first use and caches it in app state.
+
+SIGNATURE:
+def get_technical_summarizer(request: Request) -> TechnicalSummarizer
+
+HOW IT WORKS:
+1. Checks if technical_summarizer exists in app state
+2. If not, creates new TechnicalSummarizer() instance
+3. Stores it in app.state for future requests
+4. Returns the instance
+
+PARAMETERS:
+- request: FastAPI Request object
+
+RETURNS:
+- TechnicalSummarizer instance
+
+WHY LAZY INITIALIZATION:
+- Model loading takes time (~5 seconds)
+- Only loads if technical endpoints are actually used
+- Reduces startup time
+
+--------------------------------------------------------------------------------
+FUNCTION: get_ui()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Serves the main HTML user interface.
+
+SIGNATURE:
+@router.get("/", response_class=HTMLResponse)
+async def get_ui(request: Request)
+
+HOW IT WORKS:
+1. Receives GET request to root path "/"
+2. Uses Jinja2 to render index.html template
+3. Passes request context to template
+4. Returns HTML response
+
+PARAMETERS:
+- request: FastAPI Request object
+
+RETURNS:
+- HTMLResponse with rendered template
+
+WHAT IT DOES:
+When user visits http://localhost:8000/, this function:
+- Loads templates/index.html
+- Renders it with proper context
+- Sends HTML to browser
+
+--------------------------------------------------------------------------------
+FUNCTION: summarize()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Main endpoint for text summarization. Accepts text or PDF and returns summary.
+
+SIGNATURE:
+@router.post("/summarize", response_model=SummarizationResponse)
+async def summarize(
+    file: Optional[UploadFile] = File(None),
+    text: Optional[str] = Form(None),
+    method: str = Form(...),
+    summarizer: SummarizerService = Depends(get_summarizer_service)
+)
+
+HOW IT WORKS:
+Step 1: Input Processing
+- Checks if file is provided → extracts text from PDF
+- Otherwise uses text parameter
+- Validates input exists and meets minimum length
+
+Step 2: Method Selection
+- If method="abstractive" → calls abstractive_summarize()
+- If method="extractive" → calls extractive_summarize()
+- Validates method is valid
+
+Step 3: Summarization
+- Passes text to appropriate summarizer method
+- Model processes text and generates summary
+
+Step 4: Response Construction
+- Creates SummarizationResponse object
+- Includes summary, method, lengths
+- Returns JSON response
+
+Step 5: Error Handling
+- Catches exceptions
+- Logs errors
+- Returns appropriate HTTP error codes
+
+PARAMETERS:
+- file: Optional PDF file upload
+- text: Optional text input
+- method: "abstractive" or "extractive"
+- summarizer: Injected SummarizerService
+
+RETURNS:
+SummarizationResponse:
+{
+  "summary": str,
+  "method": str,
+  "original_length": int,
+  "summary_length": int
+}
+
+ERROR HANDLING:
+- 400: Missing input or text too short
+- 500: Summarization error
+
+EXAMPLE REQUEST:
+POST /summarize
+Content-Type: multipart/form-data
+
+text: "Long product description..."
+method: "abstractive"
+
+EXAMPLE RESPONSE:
+{
+  "summary": "Concise summary...",
+  "method": "abstractive",
+  "original_length": 500,
+  "summary_length": 80
+}
+
+--------------------------------------------------------------------------------
+FUNCTION: compare_documents()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Compares multiple documents by generating summaries and finding similarities.
+
+SIGNATURE:
+@router.post("/compare", response_model=ComparisonResponse)
+async def compare_documents(
+    files: Optional[List[UploadFile]] = File(None),
+    texts: Optional[List[str]] = Form(None),
+    method: str = Form("abstractive"),
+    summarizer: SummarizerService = Depends(get_summarizer_service)
+)
+
+HOW IT WORKS:
+Step 1: Document Collection
+- Processes uploaded PDF files → extracts text
+- Collects text inputs
+- Stores as list of documents with names
+
+Step 2: Validation
+- Ensures at least 2 documents provided
+- Ensures maximum 5 documents
+- Validates each document meets minimum length
+
+Step 3: Summary Generation
+For each document:
+- Generates summary using selected method
+- Stores summary with document name and length
+
+Step 4: Comparison Analysis
+- Calls compare_summaries() method
+- Extracts common keywords across documents
+- Identifies unique points per document
+
+Step 5: Response Construction
+- Packages summaries and comparison results
+- Returns structured comparison
+
+PARAMETERS:
+- files: Optional list of PDF files
+- texts: Optional list of text strings
+- method: Summarization method
+- summarizer: Injected service
+
+RETURNS:
+ComparisonResponse:
+{
+  "summaries": [{"name": str, "summary": str, "length": int}, ...],
+  "common_themes": [str, ...],
+  "unique_points": {"Doc 1": [str, ...], ...},
+  "method": str
+}
+
+ERROR HANDLING:
+- 400: Less than 2 or more than 5 documents
+- 400: Document too short
+- 500: Comparison error
+
+--------------------------------------------------------------------------------
+FUNCTION: technical_summarize()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Generates structured technical product summary with specifications, pros/cons.
+
+SIGNATURE:
+@router.post("/technical-summarize", response_model=TechnicalSummaryResponse)
+async def technical_summarize(
+    file: Optional[UploadFile] = File(None),
+    text: Optional[str] = Form(None),
+    tech_summarizer: TechnicalSummarizer = Depends(get_technical_summarizer)
+)
+
+HOW IT WORKS:
+Step 1: Input Processing
+- Extracts text from PDF or uses provided text
+- Validates minimum length
+
+Step 2: Structured Summary Generation
+- Calls extract_structured_summary()
+- AI generates base summary
+- Rule-based extraction pulls specifications
+- Identifies pros and cons
+- Determines category and use case
+- Estimates price range
+
+Step 3: Error Handling
+- Nested try-catch for detailed error tracking
+- Prints full traceback for debugging
+- Returns detailed error messages
+
+Step 4: Response Construction
+- Maps extracted data to TechnicalSummaryResponse
+- All fields populated with structured data
+
+PARAMETERS:
+- file: Optional PDF file
+- text: Optional text input
+- tech_summarizer: Injected TechnicalSummarizer
+
+RETURNS:
+TechnicalSummaryResponse:
+{
+  "product_name": str,
+  "category": str,
+  "summary": str,
+  "key_specs": {"spec_name": "spec_value", ...},
+  "pros": [str, ...],
+  "cons": [str, ...],
+  "best_for": str,
+  "price_range": str,
+  "original_length": int
+}
+
+WHAT MAKES IT DIFFERENT:
+- Returns structured data (not just text)
+- Extracts specific fields
+- Provides actionable insights
+
+--------------------------------------------------------------------------------
+FUNCTION: compare_products()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Compares multiple technical products with structured analysis.
+
+SIGNATURE:
+@router.post("/compare-products", response_model=ProductComparisonResponse)
+async def compare_products(
+    files: Optional[List[UploadFile]] = File(None),
+    texts: Optional[List[str]] = Form(None),
+    tech_summarizer: TechnicalSummarizer = Depends(get_technical_summarizer)
+)
+
+HOW IT WORKS:
+Step 1: Document Collection
+- Extracts text from files or uses provided texts
+- Validates 2-5 documents provided
+
+Step 2: Individual Analysis
+For each product:
+- Calls extract_structured_summary()
+- Gets complete structured analysis
+
+Step 3: Cross-Product Comparison
+- Calls compare_products() method
+- Analyzes specifications across products
+- Identifies common specs and unique features
+- Generates comparative insights
+
+Step 4: Response Packaging
+- Structures comparison data
+- Includes all product summaries
+- Provides specification comparison table
+
+PARAMETERS:
+- files: List of PDF files
+- texts: List of text strings
+- tech_summarizer: Injected service
+
+RETURNS:
+ProductComparisonResponse:
+{
+  "product_count": int,
+  "same_category": bool,
+  "category": str,
+  "products": [{"name": str, "category": str, ...}, ...],
+  "spec_comparison": {"spec": [{"product": str, "value": str}, ...]},
+  "summary": str
+}
+
+USE CASE:
+Perfect for comparing similar products (e.g., 3 laptops) to help users decide.
+
+--------------------------------------------------------------------------------
+FUNCTION: get_dataset_info()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Returns information about the built-in product dataset.
+
+SIGNATURE:
+@router.get("/dataset-info")
+async def get_dataset_info()
+
+HOW IT WORKS:
+1. Creates dataset instance
+2. Counts total products
+3. Extracts unique categories
+4. Lists all products with IDs and names
+5. Returns as JSON
+
+RETURNS:
+{
+  "total_products": int,
+  "categories": [str, ...],
+  "products": [{"id": str, "name": str, "category": str}, ...]
+}
+
+WHY IT EXISTS:
+- Shows users what training data is available
+- Helps understand dataset composition
+- Useful for researchers and developers
+
+--------------------------------------------------------------------------------
+FUNCTION: evaluate_summary()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Evaluates summary quality using ROUGE and BLEU metrics.
+
+SIGNATURE:
+@router.post("/evaluate", response_model=EvaluationResponse)
+async def evaluate_summary(
+    reference_text: str = Form(...),
+    generated_text: str = Form(...)
+)
+
+HOW IT WORKS:
+Step 1: Create Evaluator
+- Instantiates SummarizationEvaluator
+
+Step 2: Calculate Metrics
+- Calls evaluate_text_summary()
+- Computes ROUGE scores (1, 2, L)
+- Computes BLEU scores (1, 2, 4)
+- Calculates overall score
+
+Step 3: Generate Report
+- Calls format_evaluation_report()
+- Creates human-readable report
+
+Step 4: Return Results
+- Returns scores dictionary and formatted report
+
+PARAMETERS:
+- reference_text: Ground truth summary
+- generated_text: AI-generated summary to evaluate
+
+RETURNS:
+EvaluationResponse:
+{
+  "scores": {
+    "rouge1_fmeasure": float,
+    "rouge2_fmeasure": float,
+    "rougeL_fmeasure": float,
+    "bleu1": float,
+    "bleu2": float,
+    "bleu4": float,
+    "overall_score": float
+  },
+  "report": str
+}
+
+USE CASE:
+Researchers and developers use this to:
+- Measure summary quality objectively
+- Compare different summarization methods
+- Track improvements over time
+
+--------------------------------------------------------------------------------
+FUNCTION: train_model()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Initiates model training on the product dataset (demo mode).
+
+SIGNATURE:
+@router.post("/train", response_model=TrainingResponse)
+async def train_model(request: TrainingRequest)
+
+HOW IT WORKS:
+Step 1: Load Dataset
+- Creates ProductDataset instance
+
+Step 2: Create Training Pipeline
+- Instantiates TrainingPipeline with dataset
+
+Step 3: Return Status (Demo Mode)
+- Returns "initiated" status
+- Provides training configuration
+- Actual training commented out for demo
+
+PARAMETERS:
+TrainingRequest:
+{
+  "num_epochs": int,
+  "batch_size": int,
+  "model_name": str
+}
+
+RETURNS:
+TrainingResponse:
+{
+  "status": "initiated",
+  "message": str,
+  "metrics": {"num_samples": int, ...}
+}
+
+WHY DEMO MODE:
+- Actual training takes hours
+- Requires significant compute resources
+- In production, would use background task queue
+
+TO ENABLE REAL TRAINING:
+Uncomment the training code section in the function.
+
+
+================================================================================
+              PART 2: TECHNICAL SUMMARIZER (technical_summarizer.py)
+================================================================================
+
+FILE: app/services/technical_summarizer.py
+PURPOSE: AI-powered technical product analysis with structured output
+
+--------------------------------------------------------------------------------
+FUNCTION: __init__()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Initializes the TechnicalSummarizer with model and tokenizer.
+
+SIGNATURE:
+def __init__(self, model_name: str = "facebook/bart-large-cnn")
+
+HOW IT WORKS:
+Step 1: Model Loading
+- Loads tokenizer from HuggingFace
+- Loads pre-trained BART model
+- Takes ~5-10 seconds on first run
+
+Step 2: Device Setup
+- Checks if CUDA (GPU) is available
+- Sets device to "cuda" or "cpu"
+- Moves model to appropriate device
+
+Step 3: Initialization
+- Creates structured prompt template
+- Stores device reference
+- Logs successful initialization
+
+PARAMETERS:
+- model_name: HuggingFace model identifier
+
+WHAT IT DOES:
+self.model_name = "facebook/bart-large-cnn"
+self.tokenizer = AutoTokenizer (converts text ↔ tokens)
+self.model = AutoModelForSeq2SeqLM (400M parameter transformer)
+self.device = "cuda" or "cpu"
+self.structured_prompt = PromptTemplate
+
+ERROR HANDLING:
+- Catches loading errors
+- Prints detailed error message
+- Re-raises exception for caller to handle
+
+--------------------------------------------------------------------------------
+FUNCTION: _create_structured_prompt()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Creates a LangChain prompt template for structured summarization.
+
+SIGNATURE:
+def _create_structured_prompt(self) -> PromptTemplate
+
+HOW IT WORKS:
+1. Defines a text template with instructions
+2. Template includes placeholder: {product_description}
+3. Creates PromptTemplate object from LangChain
+4. Returns configured template
+
+RETURNS:
+PromptTemplate with input variable "product_description"
+
+TEMPLATE CONTENT:
+"You are a technical product analyst. Extract and summarize..."
+- Instructions for AI
+- List of required information
+- Focus on technical details
+
+WHY IT EXISTS:
+- Provides consistent instructions to AI
+- Can be used with LLMs in future
+- Currently informational, not directly used
+
+--------------------------------------------------------------------------------
+FUNCTION: _safe_summarize()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Core summarization function using direct model inference.
+
+SIGNATURE:
+def _safe_summarize(self, text: str, max_length: int = 200, 
+                    min_length: int = 50) -> str
+
+HOW IT WORKS:
+Step 1: Tokenization
+- Converts text to token IDs
+- Truncates to max 1024 tokens
+- Returns PyTorch tensor
+
+Step 2: Device Transfer
+- Moves input tensor to correct device (CPU/GPU)
+- Ensures model and data on same device
+
+Step 3: Generation
+- Uses torch.no_grad() for efficiency (no gradients needed)
+- Calls model.generate() with beam search
+- Parameters:
+  * max_length: Maximum summary length
+  * min_length: Minimum summary length
+  * length_penalty: Favors longer summaries (2.0)
+  * num_beams: Beam search width (4 candidates)
+  * early_stopping: Stops when good summary found
+
+Step 4: Decoding
+- Converts token IDs back to text
+- Skips special tokens ([CLS], [SEP], etc.)
+- Returns clean summary string
+
+Step 5: Error Handling
+- Catches any exceptions
+- Prints error and traceback
+- Returns empty string on failure
+
+PARAMETERS:
+- text: Input text to summarize
+- max_length: Maximum tokens in summary (default 200)
+- min_length: Minimum tokens in summary (default 50)
+
+RETURNS:
+- str: Generated summary, or "" if error
+
+TECHNICAL DETAILS:
+Beam Search Process:
+1. Start with [START] token
+2. Maintain 4 candidate sequences
+3. For each position, consider all possible next tokens
+4. Keep top 4 most probable sequences
+5. Prune unlikely branches
+6. Stop when [END] token generated
+7. Return highest probability sequence
+
+WHY "SAFE":
+- Wrapped in try-catch
+- Validates inputs
+- Handles device management
+- Provides fallback behavior
+
+EXAMPLE:
+Input: "The laptop features Intel i7, 16GB RAM..."
+Process: 
+- Tokenize: [142, 8934, 2575, ...]
+- Generate: Model processes through 12 encoder + 12 decoder layers
+- Beam search: Explores multiple summary candidates
+- Decode: "High-performance laptop with i7 processor and 16GB memory"
+Output: "High-performance laptop with i7 processor and 16GB memory"
+
+--------------------------------------------------------------------------------
+FUNCTION: summarize_to_text()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Public interface for text summarization with validation.
+
+SIGNATURE:
+def summarize_to_text(self, product_description: str, 
+                      max_length: int = 200, min_length: int = 50) -> str
+
+HOW IT WORKS:
+Step 1: Input Validation
+- Checks text is not empty
+- Validates minimum 50 characters
+- Returns error message if invalid
+
+Step 2: Token Length Check
+- Tokenizes text to count tokens
+- Applies truncation if needed
+
+Step 3: Summarization
+- Calls _safe_summarize()
+- Passes through to model
+
+Step 4: Result Validation
+- Checks if summary generated
+- Returns summary or fallback message
+
+Step 5: Error Handling
+- Catches all exceptions
+- Logs error details
+- Returns user-friendly error message
+
+PARAMETERS:
+- product_description: Text to summarize
+- max_length: Maximum summary length
+- min_length: Minimum summary length
+
+RETURNS:
+- str: Summary or error message
+
+WHY IT EXISTS:
+- Provides clean public API
+- Handles validation
+- Ensures safe operation
+- Better error messages
+
+CALL CHAIN:
+summarize_to_text() → _safe_summarize() → model.generate()
+
+--------------------------------------------------------------------------------
+FUNCTION: extract_structured_summary()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Main function that creates comprehensive structured product summary.
+
+SIGNATURE:
+def extract_structured_summary(self, product_description: str) -> Dict[str, Any]
+
+HOW IT WORKS:
+Step 1: Base Summarization
+- Calls summarize_to_text(max_length=250)
+- Gets AI-generated summary paragraph
+
+Step 2: Parallel Extraction (all happen simultaneously)
+- _extract_specifications() → key specs dictionary
+- _extract_pros_cons() → lists of advantages/disadvantages  
+- _determine_category() → product category
+- _extract_product_name() → product name
+- _determine_use_case() → best use case
+- _estimate_price_range() → price estimation
+
+Step 3: Data Compilation
+- Combines all extracted information
+- Creates structured dictionary
+- Ensures all fields present
+
+Step 4: Return
+- Returns complete structured summary
+
+PARAMETERS:
+- product_description: Full product text
+
+RETURNS:
+Dictionary:
+{
+  "product_name": str,
+  "category": str,
+  "summary": str,
+  "key_specs": dict,
+  "pros": list[str],
+  "cons": list[str],
+  "best_for": str,
+  "price_range": str
+}
+
+EXAMPLE:
+Input: "The TechPro laptop features i7-13700H..."
+Output:
+{
+  "product_name": "TechPro laptop",
+  "category": "Laptop",
+  "summary": "High-performance laptop...",
+  "key_specs": {
+    "processor": "i7-13700H...",
+    "ram": "32GB...",
+    ...
+  },
+  "pros": ["Powerful processor", "Ample memory"],
+  "cons": ["High price", "Limited ports"],
+  "best_for": "Professionals needing high performance",
+  "price_range": "Premium ($1500-2000)"
+}
+
+WHY STRUCTURED:
+- Machine-readable format
+- Easy to display in UI
+- Consistent across products
+- Enables comparisons
+
+--------------------------------------------------------------------------------
+FUNCTION: _extract_specifications()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Extracts technical specifications using pattern matching.
+
+SIGNATURE:
+def _extract_specifications(self, text: str) -> Dict[str, str]
+
+HOW IT WORKS:
+Step 1: Define Patterns
+Creates dictionary of specification types with keywords:
+- 'processor': ['processor', 'cpu', 'core i', 'ryzen', ...]
+- 'ram': ['ram', 'memory', 'gb ram', ...]
+- 'storage': ['storage', 'ssd', 'nvme', ...]
+- etc.
+
+Step 2: Text Preprocessing
+- Converts text to lowercase
+- Splits into sentences
+
+Step 3: Pattern Matching
+For each spec type:
+  For each sentence:
+    For each keyword:
+      If keyword in sentence:
+        Extract sentence as spec value
+        Break to next spec type
+
+Step 4: Validation
+- Ensures sentence length 10-200 chars
+- Filters out too short/long matches
+
+Step 5: Return
+- Returns dictionary of found specifications
+
+PARAMETERS:
+- text: Product description
+
+RETURNS:
+- Dict[str, str]: Specification type → specification value
+
+EXAMPLE:
+Input: "...The laptop has 32GB RAM. Storage is 1TB SSD..."
+Output:
+{
+  "ram": "The laptop has 32GB RAM",
+  "storage": "Storage is 1TB SSD"
+}
+
+LIMITATIONS:
+- Heuristic-based (not perfect)
+- May miss unconventional phrasings
+- Returns first match per spec type
+
+IMPROVEMENTS POSSIBLE:
+- Use NER (Named Entity Recognition)
+- More sophisticated pattern matching
+- Machine learning for extraction
+
+--------------------------------------------------------------------------------
+FUNCTION: _extract_pros_cons()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Identifies advantages and disadvantages using sentiment analysis.
+
+SIGNATURE:
+def _extract_pros_cons(self, text: str) -> tuple
+
+HOW IT WORKS:
+Step 1: Define Sentiment Indicators
+Positive phrases:
+['excellent', 'great', 'impressive', 'outstanding', 'premium',
+ 'powerful', 'fast', 'long battery', 'lightweight', ...]
+
+Negative phrases:
+['expensive', 'heavy', 'limited', 'lacks', 'no ', 'poor',
+ 'slow', 'weak', 'short battery', ...]
+
+Step 2: Sentence Analysis
+- Splits text into sentences
+- Filters sentences by length (20-150 chars)
+
+Step 3: Sentiment Scoring
+For each sentence:
+  pos_count = count of positive phrases
+  neg_count = count of negative phrases
+  
+  If pos_count > neg_count:
+    Add to pros (max 4)
+  If neg_count > pos_count:
+    Add to cons (max 4)
+
+Step 4: Fallback
+If no pros/cons found:
+- Adds generic pros
+- Adds generic cons
+
+Step 5: Return
+- Returns (pros, cons) tuple
+
+PARAMETERS:
+- text: Product description
+
+RETURNS:
+- tuple: (List[str], List[str]) for (pros, cons)
+
+EXAMPLE:
+Input: "...The laptop has excellent battery life. However, it's expensive..."
+Output:
+(
+  ["The laptop has excellent battery life"],
+  ["However, it's expensive"]
+)
+
+LIMITATIONS:
+- Simple keyword matching
+- May misclassify complex sentences
+- Context not fully understood
+
+IMPROVEMENTS:
+- Use sentiment analysis models
+- Consider negations ("not expensive" vs "expensive")
+- Aspect-based sentiment analysis
+
+--------------------------------------------------------------------------------
+FUNCTION: _determine_category()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Classifies product into predefined categories.
+
+SIGNATURE:
+def _determine_category(self, text: str) -> str
+
+HOW IT WORKS:
+Step 1: Define Categories
+Dictionary mapping:
+{
+  'Laptop': ['laptop', 'notebook', 'ultrabook'],
+  'Smartphone': ['smartphone', 'phone', 'mobile phone'],
+  'Tablet': ['tablet', 'ipad'],
+  'Monitor': ['monitor', 'display screen'],
+  ...
+}
+
+Step 2: Text Normalization
+- Converts text to lowercase
+
+Step 3: Keyword Matching
+For each category:
+  For each keyword:
+    If keyword in text:
+      Return category
+
+Step 4: Default
+- Returns 'Electronics' if no match
+
+PARAMETERS:
+- text: Product description
+
+RETURNS:
+- str: Category name
+
+EXAMPLE:
+Input: "...This smartphone features..."
+Output: "Smartphone"
+
+HOW TO EXTEND:
+Add to categories dictionary:
+'Camera': ['camera', 'dslr', 'mirrorless']
+
+--------------------------------------------------------------------------------
+FUNCTION: _extract_product_name()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Extracts likely product name from text.
+
+SIGNATURE:
+def _extract_product_name(self, text: str) -> str
+
+HOW IT WORKS:
+Step 1: Get First Sentence
+- Product name usually in first sentence
+- Splits on period
+
+Step 2: Find Capitalized Words
+- Splits sentence into words
+- Identifies words starting with uppercase
+- Filters out common words ('The', 'A', 'An', 'Is')
+
+Step 3: Collect Name Parts
+- Takes up to 3 capitalized words
+- Joins them together
+
+Step 4: Return
+- Returns extracted name or "Product"
+
+PARAMETERS:
+- text: Product description
+
+RETURNS:
+- str: Extracted product name
+
+EXAMPLE:
+Input: "The TechPro UltraBook X1 is a premium laptop..."
+Output: "TechPro UltraBook X1"
+
+LIMITATIONS:
+- Assumes name is capitalized
+- May include non-name words
+- Limited to first sentence
+
+IMPROVEMENTS:
+- Use NER for product names
+- Consider brand + model patterns
+- Parse entire text, not just first sentence
+
+--------------------------------------------------------------------------------
+FUNCTION: _determine_use_case()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Determines best use case/target audience for product.
+
+SIGNATURE:
+def _determine_use_case(self, text: str, summary: str) -> str
+
+HOW IT WORKS:
+Step 1: Combine Text Sources
+- Uses both original text and summary
+- Converts to lowercase
+
+Step 2: Define Use Cases
+Dictionary with patterns:
+{
+  "Professional content creators": ['creator', 'designer', 'professional'],
+  "Students and casual users": ['student', 'everyday', 'basic'],
+  "Gamers and enthusiasts": ['gaming', 'gamer', 'enthusiast'],
+  ...
+}
+
+Step 3: Keyword Matching
+For each use case:
+  For each keyword:
+    If keyword in combined text:
+      Return use case
+
+Step 4: Default
+- Returns generic use case if no match
+
+PARAMETERS:
+- text: Original product description
+- summary: Generated summary
+
+RETURNS:
+- str: Use case description
+
+EXAMPLE:
+Input: "...perfect for professional video editing..."
+Output: "Professional content creators and designers"
+
+--------------------------------------------------------------------------------
+FUNCTION: _estimate_price_range()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Estimates product price range from description.
+
+SIGNATURE:
+def _estimate_price_range(self, text: str) -> str
+
+HOW IT WORKS:
+Step 1: Text Normalization
+- Converts to lowercase
+
+Step 2: Keyword Matching
+Premium indicators:
+['premium', 'flagship', 'pro', 'professional', 'high-end']
+→ Returns "Premium ($1000+)"
+
+Mid-range indicators:
+['mid-range', 'moderate', 'balanced']
+→ Returns "Mid-range ($500-1000)"
+
+Budget indicators:
+['budget', 'affordable', 'value', 'entry-level']
+→ Returns "Budget ($200-500)"
+
+Step 3: Default
+- Returns "Mid-range" if no indicators found
+
+PARAMETERS:
+- text: Product description
+
+RETURNS:
+- str: Price range with estimate
+
+EXAMPLE:
+Input: "...this premium ultrabook..."
+Output: "Premium ($1000+)"
+
+LIMITATIONS:
+- Heuristic-based
+- No actual price data
+- Ranges are estimates
+
+IMPROVEMENTS:
+- Train ML model on price data
+- Consider multiple factors
+- Update ranges per category
+
+--------------------------------------------------------------------------------
+FUNCTION: compare_products()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Compares multiple structured product summaries.
+
+SIGNATURE:
+def compare_products(self, products: List[Dict[str, Any]]) -> Dict[str, Any]
+
+HOW IT WORKS:
+Step 1: Validation
+- Ensures at least 2 products
+- Returns error if less
+
+Step 2: Specification Aggregation
+For each product:
+  For each spec in product['key_specs']:
+    Add to all_specs dictionary
+    Format: {spec_name: [{"product": name, "value": value}, ...]}
+
+Step 3: Category Analysis
+- Extracts all categories
+- Checks if all products same category
+
+Step 4: Summary Generation
+- Calls _generate_comparison_summary()
+- Creates textual comparison
+
+Step 5: Result Compilation
+Returns:
+{
+  "product_count": int,
+  "same_category": bool,
+  "category": str,
+  "products": [...],
+  "spec_comparison": {...},
+  "summary": str
+}
+
+PARAMETERS:
+- products: List of structured summaries
+
+RETURNS:
+- Dict: Comparison analysis
+
+EXAMPLE:
+Input: [laptop1_summary, laptop2_summary]
+Output:
+{
+  "product_count": 2,
+  "same_category": true,
+  "category": "Laptop",
+  "spec_comparison": {
+    "processor": [
+      {"product": "Laptop 1", "value": "i7-13700H"},
+      {"product": "Laptop 2", "value": "Ryzen 5 5500U"}
+    ],
+    ...
+  },
+  "summary": "Comparing 2 laptops with different processors..."
+}
+
+--------------------------------------------------------------------------------
+FUNCTION: _generate_comparison_summary()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Generates textual summary of comparison.
+
+SIGNATURE:
+def _generate_comparison_summary(self, products: List[Dict[str, Any]]) -> str
+
+HOW IT WORKS:
+Step 1: Price Analysis
+- Extracts all price ranges
+- Identifies min and max
+
+Step 2: Use Case Analysis
+- Collects all "best_for" fields
+- Lists different use cases
+
+Step 3: Category Analysis
+- Checks if same or different categories
+
+Step 4: Text Generation
+- Combines insights into sentences
+- Joins with periods
+
+PARAMETERS:
+- products: List of product summaries
+
+RETURNS:
+- str: Comparison summary
+
+EXAMPLE:
+Output: "Price ranges vary from Budget to Premium. Products target different 
+use cases: students, professionals, gamers. All products are in the Laptop 
+category."
+
+
+================================================================================
+              PART 3: EVALUATION METRICS (metrics.py)
+================================================================================
+
+FILE: app/evaluation/metrics.py
+PURPOSE: Calculate ROUGE and BLEU scores for summary evaluation
+
+--------------------------------------------------------------------------------
+FUNCTION: __init__() [SummarizationEvaluator]
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Initializes evaluator with ROUGE scorer and BLEU utilities.
+
+HOW IT WORKS:
+1. Creates RougeScorer with metrics ['rouge1', 'rouge2', 'rougeL']
+2. Uses stemming for better matching
+3. Initializes BLEU smoothing function
+4. Downloads NLTK punkt tokenizer if needed
+
+WHAT IT CREATES:
+- self.rouge_scorer: For ROUGE calculations
+- self.smoothing: For BLEU calculations
+
+--------------------------------------------------------------------------------
+FUNCTION: evaluate_rouge()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Calculates ROUGE-1, ROUGE-2, and ROUGE-L scores.
+
+SIGNATURE:
+def evaluate_rouge(self, generated: str, reference: str) -> Dict[str, float]
+
+HOW IT WORKS:
+Step 1: Score Calculation
+- Calls rouge_scorer.score(reference, generated)
+- Returns Score objects with precision, recall, F-measure
+
+Step 2: Extraction
+- Extracts all metrics from Score objects
+- Creates flat dictionary
+
+PARAMETERS:
+- generated: AI-generated summary
+- reference: Human-written reference
+
+RETURNS:
+Dictionary with 9 scores:
+{
+  'rouge1_precision': float,
+  'rouge1_recall': float,
+  'rouge1_fmeasure': float,
+  'rouge2_precision': float,
+  'rouge2_recall': float,
+  'rouge2_fmeasure': float,
+  'rougeL_precision': float,
+  'rougeL_recall': float,
+  'rougeL_fmeasure': float
+}
+
+HOW ROUGE WORKS:
+ROUGE-1: Counts matching unigrams (single words)
+Reference: "The quick brown fox"
+Generated: "The fast brown dog"
+Matches: "The", "brown" (2/4 = 0.5 recall)
+
+ROUGE-2: Counts matching bigrams (2-word phrases)
+Reference: "The quick brown fox"
+Generated: "The fast brown dog"
+Bigrams in ref: "The quick", "quick brown", "brown fox"
+Bigrams in gen: "The fast", "fast brown", "brown dog"
+Matches: None (0/3 = 0.0 recall)
+
+ROUGE-L: Longest Common Subsequence
+Finds longest sequence of words that appear in order
+Can skip words but order must be preserved
+
+--------------------------------------------------------------------------------
+FUNCTION: evaluate_bleu()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Calculates BLEU scores with different n-gram weights.
+
+SIGNATURE:
+def evaluate_bleu(self, generated: str, reference: str) -> Dict[str, float]
+
+HOW IT WORKS:
+Step 1: Tokenization
+- Converts texts to lowercase
+- Tokenizes into word lists
+
+Step 2: BLEU-1 Calculation
+- Uses weights (1, 0, 0, 0) - only unigrams
+- Applies smoothing function
+
+Step 3: BLEU-2 Calculation
+- Uses weights (0.5, 0.5, 0, 0) - uni and bigrams
+
+Step 4: BLEU-4 Calculation
+- Uses weights (0.25, 0.25, 0.25, 0.25) - 1-4 grams
+
+PARAMETERS:
+- generated: AI summary
+- reference: Ground truth
+
+RETURNS:
+{
+  'bleu1': float,
+  'bleu2': float,
+  'bleu4': float
+}
+
+HOW BLEU WORKS:
+BLEU measures precision with brevity penalty
+
+Formula:
+BLEU = BP * exp(Σ wn * log(pn))
+
+Where:
+- BP: Brevity Penalty (penalizes short summaries)
+- wn: Weight for n-gram (usually equal)
+- pn: Precision for n-grams
+
+Example:
+Reference: "The cat sat on the mat"
+Generated: "The cat sat"
+
+Unigram precision: 3/3 = 1.0 (all words match)
+Brevity penalty: 3/6 = 0.5 (too short)
+BLEU ≈ 0.5
+
+--------------------------------------------------------------------------------
+FUNCTION: evaluate_structured_output()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Evaluates quality of structured summaries (not just text).
+
+SIGNATURE:
+def evaluate_structured_output(
+    self, 
+    generated: Dict[str, Any], 
+    reference: Dict[str, Any]
+) -> Dict[str, float]
+
+HOW IT WORKS:
+Step 1: Field Completeness
+- Counts how many required fields are present
+- Required: product_name, category, key_specs, pros, cons, best_for
+
+Step 2: Exact Field Matching
+- Checks if product_name matches exactly
+- Checks if category matches exactly
+
+Step 3: Specification Coverage
+- Compares spec field names
+- Calculates percentage of reference specs found
+
+Step 4: List Length Ratios
+- Compares number of pros
+- Compares number of cons
+
+Step 5: Overall Score
+- Averages all individual scores
+
+PARAMETERS:
+- generated: Generated structured summary
+- reference: Reference structured summary
+
+RETURNS:
+{
+  'field_completeness': float,
+  'product_name_match': float,
+  'category_match': float,
+  'specs_field_coverage': float,
+  'pros_count_ratio': float,
+  'cons_count_ratio': float,
+  'overall_structural_score': float
+}
+
+USE CASE:
+Evaluates structured outputs, not just text quality.
+
+--------------------------------------------------------------------------------
+FUNCTION: evaluate_text_summary()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Comprehensive evaluation combining ROUGE and BLEU.
+
+SIGNATURE:
+def evaluate_text_summary(self, generated: str, reference: str) -> Dict[str, Any]
+
+HOW IT WORKS:
+1. Calls evaluate_rouge()
+2. Calls evaluate_bleu()
+3. Combines all scores
+4. Calculates overall weighted score
+
+OVERALL SCORE FORMULA:
+overall = rouge1_f1 * 0.3 + rouge2_f1 * 0.3 + rougeL_f1 * 0.2 + bleu4 * 0.2
+
+RETURNS:
+All ROUGE + BLEU scores + overall_score
+
+--------------------------------------------------------------------------------
+FUNCTION: evaluate_batch()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Evaluates multiple summaries and returns averages.
+
+SIGNATURE:
+def evaluate_batch(
+    self, 
+    generated_summaries: List[str], 
+    reference_summaries: List[str]
+) -> Dict[str, float]
+
+HOW IT WORKS:
+1. Validates equal lengths
+2. Evaluates each pair
+3. Averages all scores
+4. Returns averaged metrics
+
+PARAMETERS:
+- generated_summaries: List of AI summaries
+- reference_summaries: List of references
+
+RETURNS:
+Dictionary with 'avg_' prefix on all metrics
+
+USE CASE:
+Testing on entire dataset to get overall model performance.
+
+--------------------------------------------------------------------------------
+FUNCTION: format_evaluation_report()
+--------------------------------------------------------------------------------
+
+PURPOSE:
+Creates human-readable evaluation report.
+
+SIGNATURE:
+def format_evaluation_report(scores: Dict[str, float]) -> str
+
+HOW IT WORKS:
+1. Creates header
+2. Formats ROUGE scores with 4 decimals
+3. Formats BLEU scores with 4 decimals
+4. Shows overall score
+5. Returns formatted string
+
+RETURNS:
+Multi-line string report
+
+EXAMPLE OUTPUT:
+```
+📊 Evaluation Report
+==================================================
+
+ROUGE Scores:
+  ROUGE-1 F1: 0.5234
+  ROUGE-2 F1: 0.3456
+  ROUGE-L F1: 0.4567
+
+BLEU Scores:
+  BLEU-1: 0.4234
+  BLEU-2: 0.3123
+  BLEU-4: 0.2456
+
+Overall Score: 0.4123
+```
+
+
+================================================================================
+              PART 4: TRAINING PIPELINE (trainer.py)
+================================================================================
+
+FILE: app/training/trainer.py
+PURPOSE: Model fine-tuning and training on custom datasets
+
+[Functions documented: prepare_model, prepare_dataset, setup_training_args, 
+train, evaluate, generate_summary, and TrainingPipeline.run_training]
+
+Due to length constraints, detailed training documentation focuses on key concepts:
+- Tokenization and data preparation
+- Training loop mechanics
+- Checkpoint saving
+- Evaluation during training
+
+================================================================================
+              PART 5: DATASET MANAGEMENT (product_dataset.py)
+================================================================================
+
+FILE: app/data/product_dataset.py
+PURPOSE: Manages technical product dataset
+
+Key functions:
+- __init__: Loads sample or custom dataset
+- get_product: Retrieves by ID
+- get_products_by_category: Filters by category
+- get_training_pairs: Returns (input, output) tuples
+- to_dataframe: Converts to pandas for analysis
+
+================================================================================
+                          END OF DOCUMENTATION
+================================================================================
+
+This function documentation provides detailed explanations of what each 
+function does, how it works internally, parameters, return values, examples,
+and implementation details.
+
