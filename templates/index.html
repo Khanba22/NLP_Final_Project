@@ -18,7 +18,7 @@
             <button class="tab-btn active" onclick="switchTab('technical')">Technical Summary</button>
             <button class="tab-btn" onclick="switchTab('compare')">Product Comparison</button>
             <button class="tab-btn" onclick="switchTab('evaluate')">Evaluation</button>
-            <button class="tab-btn" onclick="switchTab('dataset')">Dataset & Training</button>
+            
         </div>
         
         <!-- Tab 1: Technical Summary -->
@@ -140,7 +140,7 @@
         <!-- Tab 3: Evaluation -->
         <div id="evaluateTab" class="tab-content">
             <div class="info-box">
-                <strong>ℹ️ Evaluation:</strong> Measure summary quality using ROUGE and BLEU metrics by comparing generated vs reference summaries.
+                <strong>ℹ️ Evaluation:</strong> Measure summary quality using ROUGE, BLEU, and BARTScore metrics by comparing generated vs reference summaries.
             </div>
             
             <form id="evaluateForm">
@@ -203,6 +203,16 @@
                         </div>
                     </div>
                     
+                    <div class="metric-group">
+                        <h3>BART Score</h3>
+                        <div class="metrics-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">BARTScore</span>
+                                <span class="metric-value" id="bartScore"></span>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div class="overall-score">
                         <h3>Overall Score</h3>
                         <div class="score-display" id="overallScore"></div>
@@ -216,57 +226,7 @@
             </div>
         </div>
         
-        <!-- Tab 4: Dataset & Training -->
-        <div id="datasetTab" class="tab-content">
-            <div class="info-box">
-                <strong>ℹ️ Dataset & Training:</strong> View the technical product dataset and initiate model fine-tuning.
-            </div>
-            
-            <div class="dataset-section">
-                <h2 class="section-title">📚 Technical Product Dataset</h2>
-                <button id="loadDatasetBtn" class="btn-secondary">Load Dataset Info</button>
-                
-                <div class="loading" id="datasetLoading">
-                    <div class="spinner"></div>
-                    <p>Loading dataset...</p>
-                </div>
-                
-                <div id="datasetInfo" class="dataset-info"></div>
-            </div>
-            
-            <div class="training-section">
-                <h2 class="section-title">🎓 Model Training</h2>
-                <p>Fine-tune the summarization model on the technical product dataset for specialized output.</p>
-                
-                <form id="trainingForm">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="numEpochs">Number of Epochs:</label>
-                            <input type="number" id="numEpochs" name="num_epochs" value="3" min="1" max="10">
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="batchSize">Batch Size:</label>
-                            <input type="number" id="batchSize" name="batch_size" value="2" min="1" max="8">
-                        </div>
-                </div>
-                
-                    <button type="submit" class="btn-primary">Initiate Training</button>
-                </form>
-                
-                <div class="loading" id="trainingLoading">
-                    <div class="spinner"></div>
-                    <p>Training in progress...</p>
-                </div>
-                
-                <div class="error" id="trainingError"></div>
-                
-                <div class="result-section" id="trainingResult">
-                    <h3>Training Status</h3>
-                    <div id="trainingStatus" class="status-box"></div>
-                </div>
-            </div>
-        </div>
+        
     </div>
     
     <script>
@@ -283,8 +243,7 @@
             const tabMap = {
                 'technical': 'technicalTab',
                 'compare': 'compareTab',
-                'evaluate': 'evaluateTab',
-                'dataset': 'datasetTab'
+                'evaluate': 'evaluateTab'
             };
             
             document.getElementById(tabMap[tab]).classList.add('active');
@@ -542,6 +501,13 @@
             document.getElementById('bleu2').textContent = scores.bleu2.toFixed(4);
             document.getElementById('bleu4').textContent = scores.bleu4.toFixed(4);
             
+            // BART Score
+            if (scores.bart_score !== undefined) {
+                document.getElementById('bartScore').textContent = scores.bart_score.toFixed(4);
+            } else {
+                document.getElementById('bartScore').textContent = 'N/A';
+            }
+            
             // Overall score
             const overallScore = scores.overall_score;
             const scorePercent = (overallScore * 100).toFixed(1);
@@ -557,125 +523,7 @@
             evalResult.classList.add('show');
         }
         
-        // Tab 4: Dataset & Training
-        const loadDatasetBtn = document.getElementById('loadDatasetBtn');
-        const datasetLoading = document.getElementById('datasetLoading');
-        const datasetInfo = document.getElementById('datasetInfo');
         
-        loadDatasetBtn.addEventListener('click', async () => {
-            datasetLoading.classList.add('show');
-            datasetInfo.innerHTML = '';
-            
-            try {
-                const response = await fetch('/dataset-info');
-                if (!response.ok) throw new Error('Failed to load dataset');
-                
-                const data = await response.json();
-                displayDatasetInfo(data);
-                
-            } catch (error) {
-                datasetInfo.innerHTML = `<p class="error">Error: ${error.message}</p>`;
-            } finally {
-                datasetLoading.classList.remove('show');
-            }
-        });
-        
-        function displayDatasetInfo(data) {
-            datasetInfo.innerHTML = `
-                <div class="dataset-stats">
-                    <div class="stat-card">
-                        <span class="stat-number">${data.total_products}</span>
-                        <span class="stat-label">Total Products</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-number">${data.categories.length}</span>
-                        <span class="stat-label">Categories</span>
-                    </div>
-                </div>
-                
-                <div class="categories-list">
-                    <h4>Categories:</h4>
-                    <div class="category-tags">
-                        ${data.categories.map(cat => `<span class="category-tag">${cat}</span>`).join('')}
-                    </div>
-                </div>
-                
-                <div class="products-list">
-                    <h4>Products in Dataset:</h4>
-                    <ul>
-                        ${data.products.map(p => `
-                            <li><strong>${p.name}</strong> (${p.category})</li>
-                        `).join('')}
-                    </ul>
-                </div>
-            `;
-            datasetInfo.classList.add('show');
-        }
-        
-        // Training form
-        const trainingForm = document.getElementById('trainingForm');
-        const trainingLoading = document.getElementById('trainingLoading');
-        const trainingResult = document.getElementById('trainingResult');
-        const trainingError = document.getElementById('trainingError');
-        
-        trainingForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            trainingResult.classList.remove('show');
-            hideError(trainingError);
-            
-            trainingLoading.classList.add('show');
-            
-            try {
-                const numEpochs = parseInt(document.getElementById('numEpochs').value);
-                const batchSize = parseInt(document.getElementById('batchSize').value);
-                
-                const response = await fetch('/train', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        num_epochs: numEpochs,
-                        batch_size: batchSize,
-                        model_name: "facebook/bart-large-cnn"
-                    })
-                });
-                
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.detail || 'Training failed');
-                }
-                
-                const result = await response.json();
-                displayTrainingResult(result);
-                
-            } catch (error) {
-                showError(trainingError, error.message);
-            } finally {
-                trainingLoading.classList.remove('show');
-            }
-        });
-        
-        function displayTrainingResult(data) {
-            document.getElementById('trainingStatus').innerHTML = `
-                <div class="status-${data.status}">
-                    <h4>Status: ${data.status.toUpperCase()}</h4>
-                    <p>${data.message}</p>
-                    ${data.metrics ? `
-                        <div class="training-metrics">
-                            <h5>Training Configuration:</h5>
-                            <ul>
-                                <li>Samples: ${data.metrics.num_samples}</li>
-                                <li>Epochs: ${data.metrics.num_epochs}</li>
-                                <li>Batch Size: ${data.metrics.batch_size}</li>
-                            </ul>
-                        </div>
-                    ` : ''}
-                </div>
-            `;
-            trainingResult.classList.add('show');
-        }
     </script>
 </body>
 </html>

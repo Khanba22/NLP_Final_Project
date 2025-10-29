@@ -8,9 +8,7 @@ from app.services.summarizer import SummarizerService
 from app.services.technical_summarizer import TechnicalSummarizer
 from app.utils.file_handler import extract_text_from_pdf
 from app.core.config import settings
-from app.data.product_dataset import create_default_dataset
 from app.evaluation.metrics import SummarizationEvaluator, format_evaluation_report
-from app.training.trainer import TrainingPipeline
 from .schemas import (
     SummarizationResponse, 
     ComparisonResponse,
@@ -265,37 +263,13 @@ async def compare_products(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/dataset-info")
-async def get_dataset_info():
-    """
-    Get information about the technical product dataset
-    """
-    try:
-        dataset = create_default_dataset()
-        
-        return {
-            "total_products": len(dataset),
-            "categories": list(set(p['category'] for p in dataset.products)),
-            "products": [
-                {
-                    "id": p['product_id'],
-                    "name": p['product_name'],
-                    "category": p['category']
-                }
-                for p in dataset.products
-            ]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.post("/evaluate", response_model=EvaluationResponse)
 async def evaluate_summary(
     reference_text: str = Form(...),
     generated_text: str = Form(...)
 ):
     """
-    Evaluate summary quality using ROUGE and BLEU metrics
+    Evaluate summary quality using ROUGE, BLEU, and BARTScore metrics
     """
     try:
         evaluator = SummarizationEvaluator()
@@ -311,46 +285,11 @@ async def evaluate_summary(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/dataset-info")
+async def get_dataset_info():
+    raise HTTPException(status_code=404, detail="Endpoint removed")
+
+
 @router.post("/train", response_model=TrainingResponse)
 async def train_model(request: TrainingRequest):
-    """
-    Train/fine-tune the summarization model on the technical product dataset
-    Note: This is a demo endpoint. In production, this should be async/background task
-    """
-    try:
-        # Load dataset
-        dataset = create_default_dataset()
-        
-        # Create training pipeline
-        pipeline = TrainingPipeline(
-            dataset=dataset,
-            model_name=request.model_name
-        )
-        
-        # Note: In production, you would want to run this as a background task
-        # For demo purposes, we'll just return a message
-        return TrainingResponse(
-            status="initiated",
-            message=f"Training initiated with {len(dataset)} samples. This would normally run as a background task.",
-            metrics={
-                "num_samples": len(dataset),
-                "num_epochs": request.num_epochs,
-                "batch_size": request.batch_size
-            }
-        )
-        
-        # Uncomment below to actually run training (WARNING: Time consuming!)
-        # results = pipeline.run_training(
-        #     num_epochs=request.num_epochs,
-        #     batch_size=request.batch_size
-        # )
-        # 
-        # return TrainingResponse(
-        #     status="completed",
-        #     message="Training completed successfully",
-        #     metrics=results.get("training_metrics")
-        # )
-        
-    except Exception as e:
-        print(f"Training error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(status_code=404, detail="Endpoint removed")

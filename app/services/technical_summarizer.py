@@ -3,11 +3,9 @@
 Technical Product Summarizer using LangChain for structured output
 """
 
-import json
 from typing import Dict, List, Any, Optional
 from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
-from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
+from app.utils.model_utils import load_model_tokenizer, generate_summary
 import torch
 
 
@@ -21,19 +19,7 @@ class TechnicalSummarizer:
         self.model_name = model_name
         print(f"Loading technical summarizer model: {model_name}")
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-            self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
-            
-            # Set device properly
-            if torch.cuda.is_available():
-                device = "cuda"
-                self.model = self.model.to(device)
-                print("Using device: CUDA")
-            else:
-                device = "cpu"
-                print("Using device: CPU")
-            self.device = device
-            
+            self.model, self.tokenizer, self.device = load_model_tokenizer(model_name)
             # Define structured output prompt
             self.structured_prompt = self._create_structured_prompt()
             print("Technical summarizer initialized successfully")
@@ -78,26 +64,14 @@ Provide a concise, technical summary focusing on specifications and performance 
             Summarized text
         """
         try:
-            # Tokenize input
-            inputs = self.tokenizer.encode(text, return_tensors="pt", max_length=1024, truncation=True)
-            
-            # Move inputs to the correct device
-            inputs = inputs.to(self.device)
-            
-            # Generate summary
-            with torch.no_grad():
-                summary_ids = self.model.generate(
-                    inputs,
-                    max_length=max_length,
-                    min_length=min_length,
-                    length_penalty=2.0,
-                    num_beams=4,
-                    early_stopping=True
-                )
-            
-            # Decode output
-            summary = self.tokenizer.decode(summary_ids[0], skip_special_tokens=True)
-            return summary
+            return generate_summary(
+                model=self.model,
+                tokenizer=self.tokenizer,
+                text=text,
+                device=self.device,
+                max_length=max_length,
+                min_length=min_length,
+            )
             
         except Exception as e:
             print(f"Error in safe summarization: {e}")
@@ -267,7 +241,7 @@ Provide a concise, technical summary focusing on specifications and performance 
             'Laptop': ['laptop', 'notebook', 'ultrabook'],
             'Smartphone': ['smartphone', 'phone', 'mobile phone', 'iphone', 'android'],
             'Tablet': ['tablet', 'ipad'],
-            'Monitor': ['monitor', 'display screen'],
+            'Monitor': ['monitor', 'display screen'], 
             'Camera': ['camera', 'dslr', 'mirrorless'],
             'Headphones': ['headphone', 'earbuds', 'earphone'],
             'Smartwatch': ['smartwatch', 'watch', 'wearable']
@@ -417,28 +391,47 @@ Provide a concise, technical summary focusing on specifications and performance 
         return comparison
     
     def _generate_comparison_summary(self, products: List[Dict[str, Any]]) -> str:
-        """Generate a textual comparison summary"""
+        """Generate a model-based comparison summary"""
         if not products:
             return "No products to compare."
         
-        summary_parts = []
+        # Build comprehensive comparison text for the model
+        comparison_text = "Product Comparison:\n\n"
         
-        # Price comparison
-        price_ranges = [p.get('price_range', '') for p in products if p.get('price_range')]
-        if price_ranges:
-            summary_parts.append(f"Price ranges vary from {min(price_ranges)} to {max(price_ranges)}.")
+        for i, product in enumerate(products, 1):
+            comparison_text += f"Product {i}: {product.get('product_name', 'Unknown')}\n"
+            comparison_text += f"Category: {product.get('category', 'N/A')}\n"
+            comparison_text += f"Price Range: {product.get('price_range', 'N/A')}\n"
+            comparison_text += f"Best For: {product.get('best_for', 'N/A')}\n"
+            
+            # Add key specs
+            if 'key_specs' in product and product['key_specs']:
+                comparison_text += "Key Specifications: "
+                specs = [f"{k}: {v}" for k, v in product['key_specs'].items()]
+                comparison_text += ", ".join(specs[:5]) + "\n"
+            
+            # Add pros
+            if 'pros' in product and product['pros']:
+                comparison_text += f"Pros: {', '.join(product['pros'][:3])}\n"
+            
+            # Add cons
+            if 'cons' in product and product['cons']:
+                comparison_text += f"Cons: {', '.join(product['cons'][:3])}\n"
+            
+            comparison_text += "\n"
         
-        # Use case comparison
-        use_cases = [p.get('best_for', '') for p in products if p.get('best_for')]
-        if use_cases:
-            summary_parts.append(f"These products target different use cases: {', '.join(use_cases[:3])}.")
+        comparison_text += "Compare these products and provide a concise summary highlighting key differences, similarities, and recommendations."
         
-        # Category info
-        categories = set(p.get('category', '') for p in products if p.get('category'))
-        if len(categories) == 1:
-            summary_parts.append(f"All products are in the {list(categories)[0]} category.")
-        else:
-            summary_parts.append(f"Products span multiple categories: {', '.join(categories)}.")
-        
-        return ' '.join(summary_parts)
+        # Use model to generate intelligent summary
+        try:
+            model_summary = self._safe_summarize(
+                comparison_text, 
+                max_length=300, 
+                min_length=100
+            )
+            return model_summary
+        except Exception as e:
+            print(f"Error generating model-based summary: {e}")
+            # Fallback to basic summary
+            return f"Comparison of {len(products)} products across different specifications and price ranges."
 

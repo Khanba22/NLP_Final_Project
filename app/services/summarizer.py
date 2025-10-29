@@ -2,7 +2,8 @@
 import torch
 import string
 from collections import Counter
-from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import pipeline
+from app.utils.model_utils import load_model_tokenizer, get_device
 from nltk.corpus import stopwords
 from nltk.tokenize import sent_tokenize, word_tokenize
 from app.core.config import settings
@@ -19,13 +20,12 @@ class SummarizerService:
     def _load_model(self):
         """Loads the pre-trained model and tokenizer."""
         print(f"Loading model: {self.model_name}")
-        tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name)
+        model, tokenizer, _ = load_model_tokenizer(self.model_name)
         return model, tokenizer
 
     def _create_pipeline(self):
         """Creates the summarization pipeline."""
-        device = 0 if torch.cuda.is_available() else -1
+        device = 0 if get_device() == "cuda" else -1
         return pipeline(
             "summarization",
             model=self.model,

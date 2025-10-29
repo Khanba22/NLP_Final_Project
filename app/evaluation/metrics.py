@@ -1,7 +1,7 @@
 # app/evaluation/metrics.py
 """
 Evaluation metrics for summarization quality
-Includes ROUGE, BLEU, and custom metrics for structured output
+Includes ROUGE, BLEU, BARTScore, and custom metrics for structured output
 """
 
 from typing import Dict, List, Any
@@ -10,6 +10,13 @@ from rouge_score import rouge_scorer
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from nltk.tokenize import word_tokenize
 import nltk
+import torch
+try:
+    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    TRANSFORMERS_AVAILABLE = False
+    print("Warning: transformers library not available. BARTScore will not be calculated.")
 
 # Download required NLTK data
 try:
@@ -21,6 +28,7 @@ except LookupError:
 class SummarizationEvaluator:
     """
     Evaluates summarization quality using multiple metrics
+    Includes ROUGE, BLEU, and BARTScore metrics
     """
     
     def __init__(self):
@@ -29,6 +37,32 @@ class SummarizationEvaluator:
             use_stemmer=True
         )
         self.smoothing = SmoothingFunction()
+        
+        # Initialize BARTScore components if available
+        self.bart_tokenizer = None
+        self.bart_model = None
+        self.bart_device = None
+        
+        if TRANSFORMERS_AVAILABLE:
+            try:
+                model_name = 'facebook/bart-large-cnn'
+                print(f"Loading BARTScore model: {model_name}")
+                self.bart_tokenizer = AutoTokenizer.from_pretrained(model_name)
+                self.bart_model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+                
+                # Set device
+                if torch.cuda.is_available():
+                    self.bart_device = "cuda"
+                    self.bart_model = self.bart_model.to(self.bart_device)
+                else:
+                    self.bart_device = "cpu"
+                
+                self.bart_model.eval()  # Set to evaluation mode
+                print("BARTScore model loaded successfully")
+            except Exception as e:
+                print(f"Warning: Failed to initialize BARTScore: {e}")
+                self.bart_tokenizer = None
+                self.bart_model = None
     
     def evaluate_rouge(self, generated: str, reference: str) -> Dict[str, float]:
         """
@@ -97,6 +131,61 @@ class SummarizationEvaluator:
             'bleu4': bleu4
         }
     
+    def evaluate_bart(self, generated: str, reference: str) -> Dict[str, float]:
+        """
+        Calculate BARTScore using direct transformers implementation
+        BARTScore computes the log-likelihood of generating the reference given the generated text
+        
+        Args:
+            generated: Generated summary text
+            reference: Reference summary text
+            
+        Returns:
+            Dictionary with BARTScore
+        """
+        if not TRANSFORMERS_AVAILABLE or self.bart_model is None or self.bart_tokenizer is None:
+            return {'bart_score': 0.0}
+        
+        try:
+            # Tokenize inputs (source = generated, target = reference)
+            # BARTScore: P(reference | generated)
+            source = self.bart_tokenizer(
+                generated,
+                return_tensors="pt",
+                truncation=True,
+                max_length=1024,
+                padding=False
+            )
+            target = self.bart_tokenizer(
+                reference,
+                return_tensors="pt",
+                truncation=True,
+                max_length=1024,
+                padding=False
+            )
+
+            source = {k: v.to(self.bart_device) for k, v in source.items()}
+            target_ids = target["input_ids"].to(self.bart_device)
+
+            # Calculate negative log-likelihood loss for target given source
+            with torch.no_grad():
+                outputs = self.bart_model(
+                    input_ids=source["input_ids"],
+                    attention_mask=source.get("attention_mask"),
+                    labels=target_ids,
+                    return_dict=True
+                )
+                loss = outputs.loss  # averaged over tokens (ignores -100)
+
+            # Define BARTScore as negative loss (higher is better)
+            bart_score = float(-loss.item())
+            return {'bart_score': bart_score}
+        except Exception as e:
+            print(f"Error calculating BARTScore: {e}")
+            import traceback
+            traceback.print_exc()
+            return {'bart_score': 0.0}
+    
     def evaluate_structured_output(
         self, 
         generated: Dict[str, Any], 
@@ -163,28 +252,60 @@ class SummarizationEvaluator:
     
     def evaluate_text_summary(self, generated: str, reference: str) -> Dict[str, Any]:
         """
-        Comprehensive evaluation combining ROUGE and BLEU
+        Comprehensive evaluation combining ROUGE, BLEU, and BARTScore
         
         Args:
             generated: Generated summary text
             reference: Reference summary text
             
         Returns:
-            Dictionary with all metric scores
+            Dictionary with all metric scores (ROUGE, BLEU, BARTScore, and overall score)
         """
         rouge_scores = self.evaluate_rouge(generated, reference)
         bleu_scores = self.evaluate_bleu(generated, reference)
+        bart_scores = self.evaluate_bart(generated, reference)
         
         # Combine all scores
-        all_scores = {**rouge_scores, **bleu_scores}
+        all_scores = {**rouge_scores, **bleu_scores, **bart_scores}
         
         # Calculate overall score (weighted average)
+        # Normalize BARTScore if available (BARTScore can be negative, we'll normalize it)
         overall_score = (
-            rouge_scores['rouge1_fmeasure'] * 0.3 +
-            rouge_scores['rouge2_fmeasure'] * 0.3 +
+            rouge_scores['rouge1_fmeasure'] * 0.25 +
+            rouge_scores['rouge2_fmeasure'] * 0.25 +
             rouge_scores['rougeL_fmeasure'] * 0.2 +
-            bleu_scores['bleu4'] * 0.2
+            bleu_scores['bleu4'] * 0.15
         )
+        
+        # Add BARTScore if present (normalize to 0-1 range if negative values exist)
+        if 'bart_score' in bart_scores:
+            bart_score = bart_scores['bart_score']
+            # Normalize BARTScore (typically ranges from -inf to 0, we'll use sigmoid-like normalization)
+            # Or simply add it with a weight if it's already normalized
+            # Assuming BARTScore is typically negative, we'll use exp to normalize
+            if bart_score < 0:
+                # Normalize negative BARTScore to 0-1 range using exponential
+                normalized_bart = 1 / (1 + abs(bart_score))
+            else:
+                # If positive, use as is but cap at 1.0
+                normalized_bart = min(bart_score, 1.0)
+            
+            # Update weights to include BARTScore
+            overall_score = (
+                rouge_scores['rouge1_fmeasure'] * 0.2 +
+                rouge_scores['rouge2_fmeasure'] * 0.2 +
+                rouge_scores['rougeL_fmeasure'] * 0.15 +
+                bleu_scores['bleu4'] * 0.15 +
+                normalized_bart * 0.3
+            )
+        else:
+            # Revert to original weights if BARTScore not available
+            overall_score = (
+                rouge_scores['rouge1_fmeasure'] * 0.3 +
+                rouge_scores['rouge2_fmeasure'] * 0.3 +
+                rouge_scores['rougeL_fmeasure'] * 0.2 +
+                bleu_scores['bleu4'] * 0.2
+            )
         
         all_scores['overall_score'] = overall_score
         
@@ -247,6 +368,10 @@ def format_evaluation_report(scores: Dict[str, float]) -> str:
         report += f"  BLEU-1: {scores['bleu1']:.4f}\n"
         report += f"  BLEU-2: {scores['bleu2']:.4f}\n"
         report += f"  BLEU-4: {scores['bleu4']:.4f}\n\n"
+    
+    if 'bart_score' in scores:
+        report += "BART Score:\n"
+        report += f"  BARTScore: {scores['bart_score']:.4f}\n\n"
     
     if 'overall_score' in scores:
         report += f"Overall Score: {scores['overall_score']:.4f}\n"
